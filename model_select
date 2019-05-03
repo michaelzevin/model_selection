@@ -1,0 +1,451 @@
+#!/usr/bin/env python
+
+#######################
+### MODEL SELECTION ###
+#######################
+
+# --- Import packages --- #
+import sys
+import os
+import math
+import pickle
+import argparse
+import h5py
+import pdb
+
+import numpy as np
+import numpy.random as rand
+import pandas as pd
+import scipy.stats
+
+from populations import bbh_models
+
+import emcee
+from emcee import PTSampler
+
+VERBOSE=True
+
+# --- Argument handling --- #
+argp = argparse.ArgumentParser()
+argp.add_argument("-d", "--dirpath", type=str, default="/Users/michaelzevin/research/model_selection/second_generation/data/processed/", help="Sets the directory path where the models are living. Models must be stored as an hdf file with different keys storing the information about different models. The name of the hdf file is the name of the population (e.g. 'field.hdf' and 'cluster.hdf'.")
+argp.add_argument("-m", "--model", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. If 'gwobs', will use the actual GW observations.")
+argp.add_argument("-b", "--beta", type=float, help="Chooses the branching fraction: Nclus/Ntot. Must be set if gwobs not used. Default=None.")
+argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations to be taken from the model. Must be set if gwobs not used. Default=None.")
+argp.add_argument("-s", "--smear", action="store_true", help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. Default=False.")
+argp.add_argument("-p", "--params", nargs="+", default="mchirp", help="Specifies the parameters you wish to use in the inference. Default=mchirp.")
+argp.add_argument("-sm", "--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the sping magnitude is not specified. Default is None.")
+argp.add_argument("-nt", "--Ntrials", type=int, default=1, help="Choose the number of the realization you are performing. Default=1.")
+argp.add_argument("--name", type=str, help="Use this as the stem for all file output. Default=None.")
+argp.add_argument("--save-samples", action="store_true", help="Save all the samples rather than just the summary statistics. Default is False.")
+argp.add_argument("--random-seed", type=int, help="Use this to set the random seed. Default=None.")
+args = argp.parse_args()
+
+
+
+# --- Load in models/kdemodels into dict structure: models[model][channel]
+models, kde_models = bbh_models.get_models(args.dirpath, args.params, args.spinmag, weighting=True)
+model_names = list(models.keys())
+params = args.params
+
+# check to see if the models have the same formation channels
+channels_tmp = models[list(models.keys())[0]].keys()
+for model in models.keys():
+    if models[model].keys() != channels_tmp:
+        raise ValueError("Different models have differing formation channels! Check your hdf keys...")
+channels = list(channels_tmp)
+
+if (args.model not in models.keys()) and (args.model != 'gwobs'):
+    raise NameError("The true model you specified ({0:s}) is not one of the models in {1:s} directory!".format(args.model, args.dirpath))
+
+if VERBOSE:
+    print("Formation channels: " + ", ".join(channels))
+    print("Astrophysical models: " + ", ".join(models.keys()))
+    print("Parameters for inference: " + ", ".join(params))
+    print("")
+
+
+
+import pdb; pdb.set_trace()
+
+
+
+
+from populations import AdditiveModel
+
+
+# Find the models that are located in the model dirpath
+submodels_dict = {'proportional': 0, 'fallback': 1, 'full': 2}
+if true_kick not in submodels_dict.keys():
+    sys.exit("Error: injected model not in submodels!")
+
+
+
+### Construct true model ###
+
+test_models, model0 = {}, None
+beta_val = args.beta_value
+for submodel in submodels_dict.keys():
+    test_models[submodel] = model = AdditiveModel()
+    model_tags = ("field", "clusters")
+    for tag in model_tags:
+        tag += "_" + submodel
+        # Allow changing of betas in 2 distribution case
+        if "clusters" not in tag:
+            model.append_model(pop_models[tag], (1.0-beta_val))
+        if "clusters" in tag:
+            model.append_model(pop_models[tag], beta_val)
+        # Choose the 'true' model here
+        if submodel == true_kick:
+            model0 = test_models[submodel]
+            if "clusters" not in tag:
+                print('\ntrue model: {0:s}'.format(submodel))
+                print("\nTrue model range:")
+                print('field: {:0.2f} - {:0.2f}'.format(pop_models[tag]._bin_edges[0][0], pop_models[tag]._bin_edges[0][-1]))
+            if "clusters" in tag:
+                print('clusters: {:0.2f} - {:0.2f}'.format(pop_models[tag]._bin_edges[0][0], pop_models[tag]._bin_edges[0][-1]))
+    model.freeze()
+
+print('\nmodel proportions')
+pprint.pprint(test_models)
+
+nbetas = len(model_tags)
+
+
+
+### Generate observations ###
+
+# Calls gw_obs.py if argument is passed
+if args.gw_obs:
+    from models import gw_obs
+    obsdata, events = gw_obs.generate_observations(smeared='posteriors')
+    print("\nGW events used in inference:")
+    print(*events.keys(), sep=', ')
+else:
+    obsdata = model0.generate_observations(args.n_observations, phigh=None, smeared=smeared)
+
+ndim = obsdata.shape[-1]
+
+# Freeze the samples into their respective models
+# This is done so as not to recompute p_model(data) over and over
+# again when the observation values aren't going to change
+for label in test_models:
+    test_models[label].freeze_dist(obsdata)
+
+submodels = list(test_models.values())
+
+
+
+
+### Plot observations and KDEs ###
+
+if args.make_plots:
+    plt.figure()
+    gs = gridspec.GridSpec(len(test_models), ndim)
+    gs.update(hspace=0.0)
+    axes = []
+    for i, model in enumerate(test_models):
+        print('\nplotting model: {:s}'.format(model))
+
+        # plot the observations
+        for dn in range(ndim):
+            ax = plt.subplot(gs[i,dn])
+            if obsdata.shape[1] != 1:
+                ax2 = ax.twinx()
+                ax2.boxplot(obsdata[:,:,dn].T, vert=False, showfliers=False, positions=np.zeros(obsdata.shape[0]))
+                ax2.set_yticks([])
+                ax2.set_ylim(0, None)
+
+            else:
+                # Single delta function observations
+                for d in obsdata[:,0,dn]:
+                    ax.axvline(d, 0, 0.05, color='r')
+
+            # plot the submodel
+            for submodel in test_models[model]:
+                submodel.plot(ax, dim=dn)
+
+            test_models[model].plot(ax, dim=dn, linestyle='-.', color='k', label=model)
+
+        # FIXME: This doesn't work when the density is nearly flat and above zero.
+        #ax.set_ylim(0, None)
+        if i != len(test_models) - 1:
+            ax.set_xticks([])
+            ax.set_yticks(ax.get_yticks()[1:])
+        if i == len(test_models) - 1:
+            ax.set_xlabel(r'$\mathcal{M}_c\ (M_{\odot})$', fontsize=20)
+            ax.xaxis.set_tick_params(labelsize=15)
+        if i == len(test_models) - 2:
+            ax.set_ylabel(r'$probability\ (M_{\odot}^{-1})$', fontsize=20)
+        if i != 0:
+            ax.set_yticks([])
+        if i==0:
+            ax.set_yticks([])
+        ax.set_xlim(0, None)
+        ax.set_ylim(0,0.1)
+
+        ax.legend(loc="upper right", prop={'size':16})
+
+        xr = ax.get_xlim()
+        # Synchronize x ranges
+        full_xr = [float("inf"), float("-inf")]
+        full_xr[0], full_xr[1] = min(full_xr[0], xr[0]), max(full_xr[1], xr[1])
+
+        axes.append(ax)
+
+    for ax in axes:
+        ax.set_xlim(*full_xr)
+
+    plt.suptitle("Observations compared to models (Beta="+str(beta_val)+")")
+    plt.subplots_adjust(top=0.9, bottom=0.15)
+    fname = "mdl_obs.png"
+    if args.run_tag:
+        fname = args.run_tag + "_" + fname
+    plt.savefig(fname, format='png')
+
+
+
+
+
+### Define the likelihood and prior ###
+
+_concentration = np.ones(nbetas)
+def lnp(x):
+    """
+    Log of the prior. Returns logL of -inf for points outside, uniform within. Is conditional on the sum of the betas being one.
+    """
+    model = x[0]
+    beta = np.asarray(x[1:])
+
+    if math.floor(model) not in range(0, len(test_models)):
+        return -np.inf
+
+    if np.any(beta < 0.0):
+        return -np.inf
+
+    if np.sum(beta) > 1.0:
+        return -np.inf
+
+    # Dirchlet distribution
+    x = np.append(beta, 1-np.sum(beta))
+    return scipy.stats.dirichlet.logpdf(x, _concentration)
+
+def histlnlike(x, data):
+    """
+    Log of the likelihood. Selects on model, then tests beta.
+    """
+    model_idx = int(math.floor(x[0]))
+    betas = np.append(x[1:], 1-np.sum(x[1:]))
+
+    # Prior
+    lp = lnp(x)
+    if not np.isfinite(lp):
+        return lp
+
+    # Likelihood
+    prob = np.zeros(data.shape[0])
+
+    # We're iterating over all the submodels of the selected additive model
+    for smdl, beta in zip(submodels[model_idx], betas):
+        prob += beta * smdl(data)
+
+    return np.log(prob).sum() + lp
+
+
+
+
+### Do sampling ###
+
+# Set up walkers
+ndim, nwalkers = 1 + (nbetas - 1), 16
+ntemps = 4
+# Set up initial point
+p0PT = np.empty(shape=(ntemps, nwalkers, ndim))
+# branching ratios
+p0PT[:,:,:] = scipy.stats.dirichlet.rvs(_concentration, (p0PT.shape[0], p0PT.shape[1]))
+# model index
+p0PT[:,:,0] = np.random.uniform(0, len(test_models), size=(ntemps, nwalkers))
+# NOTE: This is a bit of a hack. Because one of the betas is "implied", we
+# overwite one of them with the model index. That beta isn't expected by the
+# current likelihood function, so this is all consistent, but be careful
+
+sampler = PTSampler(ntemps, nwalkers, ndim, histlnlike, lnp, loglargs=[obsdata])
+
+# Do the actual sampling
+print("\nsampling...")
+nsteps = 5000
+for i, result in enumerate(sampler.sample(p0PT, iterations=nsteps)):
+    if (i+1) % 50 == 0:
+        sys.stderr.write('\r %{0} N {1}'.format(float(i+1)*100. / nsteps, i+1))
+print("\nsampling complete")
+
+
+# specify number of steps for burn-in
+burnin = 1000
+nplot = nsteps-burnin
+samples = sampler.chain[:,:,-nplot:,:]
+lnprb = sampler.lnprobability[:,:,-nplot:]
+# reshape to have all steps from all walkers in a single dimension
+samples = samples.reshape((ntemps, nwalkers * nplot, ndim))
+lnprb = lnprb.reshape((ntemps, nwalkers * nplot))
+# NOTE: samples[:,:,0] is model idx, samples [:,:,1] is beta
+# take floor of model indices FIXME we need to do this discrete sampling better...
+# samples[0,:,0] = np.floor(samples[0,:,0])
+
+print("\nSample breakdown:")
+# Parse out the model index in low-T chain
+counts = np.floor(samples[0,:,0]).astype(int)
+# ensure we use only those with valid model indices
+#counts = counts[counts >= 0]
+
+for mdl_idx, label in enumerate(test_models.keys()):
+    locs = np.where(counts==mdl_idx)
+    beta = samples[0,:,1][locs].mean()
+    count = len(counts[counts == mdl_idx])
+    print("Model {0:s} ({1:d}): {2:d} samples, beta={3:0.2f}".format(label, mdl_idx, count, beta))
+
+
+
+
+
+### Plot / histogram the MCMC samples ###
+
+# Histogram
+
+if args.make_plots:
+    plt.figure(figsize=(8,8))
+    gs = gridspec.GridSpec(nbetas, len(test_models))
+    gs.update(wspace=0.0, hspace=0.0)
+
+    for i in range(nbetas):
+        # This is the sample scatter plot
+        ax1 = plt.subplot(gs[i,:2])
+        # This is the sample count histogram (posterior on branching)
+        ax2 = plt.subplot(gs[i, 2])
+
+        bins = np.linspace(0, 1.0, 101)
+        for color, modl in (('b', 0), ('g', 1), ('r', 2)):
+            current_model = counts == modl
+            # The last branching ratio is implied by the first N-1
+            if i == nbetas-1:
+                samp = 1-np.sum(samples[0,:,1:][current_model], axis=-1)
+            else:
+                samp = samples[0,:,i+1][current_model]
+            n = np.where(current_model)
+
+            model_name = list(test_models.keys())[modl]
+            model = list(test_models.values())[modl]
+
+            ax1.scatter(n, samp, s=1, marker='.', color=color)
+            # fake a point for plot legend
+            ax1.scatter(0,2, s=40, marker='.', color=color, label=model_name)
+
+            ax1.set_xlabel(r"$N$", fontsize=24)
+            ax1.set_ylim(0, 1)
+            ax1.set_xlim(0, 5000)
+
+            if i == 0:
+                ax2.axhline(beta_val, linestyle='-.', color='k')
+                ax1.set_ylabel(r"$\beta_C$",fontsize=24)
+                ax1.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
+            if i != 0:
+                ax1.legend(loc='lower left', prop={'size':20})
+                ax1.set_yticks(ax1.get_yticks()[:-1])
+                ax2.axhline(1.0-beta_val, linestyle='-.', color='k')
+                ax1.set_ylabel(r"$\beta_F$", fontsize=24)
+                ax1.set_yticks([0.0,0.2,0.4,0.6,0.8])
+
+            if i != nbetas-1:
+                ax1.set_xticks([])
+                ax2.set_xticks([])
+
+            ax2.hist(samp, bins=bins, alpha=0.5, histtype='stepfilled', orientation='horizontal', color=color)
+            ax2.set_ylim(0, 1)
+
+        ax2.set_yticks([])
+        ax1.set_xticks(ax1.get_xticks()[:-1])
+        ax1.xaxis.set_tick_params(labelsize=15)
+        ax2.xaxis.set_tick_params(labelsize=15)
+        ax1.yaxis.set_tick_params(labelsize=15)
+    fname = "hist.png"
+    if args.run_tag:
+        fname = args.run_tag + "_" + fname
+    plt.savefig(fname, format='png')
+
+
+    # Maximum posteriors
+
+    ndim = obsdata.shape[-1]
+    # NOTE: this is now the physical parameter dimensions, not the model parameter dimensions
+    plt.figure()
+    for dn in range(ndim):
+        ax = plt.subplot(ndim, 1, dn+1)
+
+        # "True" model
+        model0_1d = model0.marginalize_to(dn)
+        model0_1d.plot(ax, color='r', label="real model")
+
+        # Maximum a posteriori point
+        map_idx = np.argmax(lnprb[0,:])
+        #FIXME: Implicit assumption that the correct *model* has the map value
+        map_model = AdditiveModel.from_additivemodel(model0_1d, samples[0,map_idx])
+        xpts, _ = map_model.plot(ax, color='k', label="max post.")
+
+        # Smattering of models to find the 90% credible intervals
+        xpts.sort()
+        xpts = xpts[:,np.newaxis,np.newaxis]
+        ypts = np.empty((int(samples.shape[1]/1000), xpts.shape[0]))
+        for i, s in enumerate(samples[0,::1000,:]):
+            mdl_idx = int(np.floor(s[0]))
+            betas = np.append(s[1:], 1 - np.sum(s[1:]))
+            new_model = AdditiveModel.from_additivemodel(model0_1d, betas)
+            ypts[i,:] = new_model(xpts)
+            #new_model.plot(ax, color='k', alpha=0.2)
+        p5, p95 = np.percentile(ypts, 5, axis=0), np.percentile(ypts, 95, axis=0)
+        plt.fill_between(np.squeeze(xpts), p5, p95, color='k', alpha=0.3)
+    ax.legend(loc="upper right")
+    ax.set_title('Final posterior samples of true distribution')
+    ax.set_xlabel(r'$\mathcal{M}_c$')
+    ax.set_xlim(0, None)
+    fname = "comp.png"
+    if args.run_tag:
+        fname = args.run_tag + "_" + fname
+    plt.savefig(fname)
+
+
+    # Corner plot
+
+    plt.figure()
+    samples = samples[0,:,:]
+    samples = np.column_stack((samples, 1-np.sum(samples[:,1:], axis=-1)))
+    labels = [r"$\mathscr{M}$"] + [r"$\beta_{%d}$" % i for i in range(nbetas)]
+    ranges = [(-1, len(test_models))] + [(0, 1)] * nbetas
+    if true_kick == 'proportional':
+        tk=0
+    elif true_kick == 'fallback':
+        tk=1
+    elif true_kick == 'full':
+        tk=2
+    corner.corner(samples, range=ranges, truths=[tk,list(model0.rel_fracs.values())[1],list(model0.rel_fracs.values())[0]], labels=labels)
+    fname = "posterior.png"
+    if args.run_tag:
+        fname = args.run_tag + "_" + fname
+    plt.savefig(fname)
+
+
+### Save samples ###
+
+if args.save_samples:
+    fname = str(args.num_trial)+"_samples.h5"
+    if args.run_tag:
+        fname = args.run_tag + "_" + fname
+    import h5py
+    hfile = h5py.File(fname, "w")
+    bsgrp = hfile.create_group("model_selection")
+    group = bsgrp.create_group(args.run_tag or "model_samples")
+    group.create_dataset("model_params", data=np.append([submodels_dict[true_kick]], list(model0.rel_fracs.values())))
+    labels = ["model_idx"] + ["beta_%d" % i for i in range(nbetas)]
+    group.attrs["param_names"] = labels
+    for lbl, d in zip(labels, samples.T):
+        group.create_dataset(lbl, data=d)
+    bsgrp.create_dataset("observations", data=obsdata)
+    hfile.close()
