@@ -40,16 +40,15 @@ class KDEModel(Model):
             samples = samples.sample(int(Nsamps))
 
         kde_samples = np.asarray(samples[params])
-        if weighting:
-            weights = samples["weight"]
+        weights = samples["weight"] if weighting else None
 
         return KDEModel(kde_samples, weights)
 
 
-    def __init__(self, samples, weights):
+    def __init__(self, samples, weights=None):
         self._samples = samples
         self._weights = weights
-        _kde = KernelDensity(rtol=1e-4) #NOTE: can play around with rtol, larger value less precise but faster
+        _kde = KernelDensity(kernel='gaussian', bandwidth=0.01, rtol=1e-8)
         # FIXME: do we need to normalize the various input parameters?
         _kde.fit(samples, sample_weight=weights)
 

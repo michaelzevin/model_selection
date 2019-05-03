@@ -81,7 +81,7 @@ def get_models(dirpath, params, spin_distr=None, weighting=False, **kwargs):
         for channel in channels:
             df = models[mdl_name][channel]
 
-            mdl = KDEModel.from_samples(df, params, weighting=weighting)
+            mdl = KDEModel.from_samples(df, params, weighting=weighting, Nsamps=1e4)
             kde_models[mdl_name][channel] = mdl
 
     return models, kde_models
