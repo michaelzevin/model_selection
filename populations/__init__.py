@@ -60,11 +60,12 @@ class KDEModel(Model):
 
         _kde = KernelDensity(kernel='gaussian', bandwidth=0.01, rtol=1e-8)
         _kde.fit(samples, sample_weight=weights)
+        self._kde = _kde
 
         # account for unnormalized inputs (sklearn returns logp)
         # also need to scale pdf by parameter range
         pdf_scale = scale_to_unity(self._norm_params)
-        self._logpdf = lambda x: _kde.score_samples(normalize_samples(x, self._norm_params))/pdf_scale
+        self._logpdf = lambda x: _kde.score_samples(normalize_samples(x, self._norm_params)) - np.log(pdf_scale)
         self._pdf = lambda x: np.exp(_kde.score_samples(normalize_samples(x, self._norm_params)))/pdf_scale
 
         # keep bounds of the samples
@@ -75,6 +76,13 @@ class KDEModel(Model):
 
         self._cached_values = None
 
+    def sample(self, N=1, random_state=None):
+        """
+        Samples KDE and denormalizes sampled data
+        """
+        samps_norm = self._kde.sample(n_samples=N, random_state=random_state)
+        samps =  denormalize_samples(samps_norm, self._norm_params)
+        return samps
 
     def bin_centers(self):
         """
@@ -127,11 +135,11 @@ class KDEModel(Model):
             ax.plot(np.squeeze(_eval_pts), self._bin_heights, **kwargs)
         return _eval_pts, self._bin_heights
 
-    def marginalize_to(self, dim):
+    def marginalize(self, params):
         """
-        Generate a new, lower dimensional, KDEModel from the dimension indexed by 'dim'.
+        Generate a new, lower dimensional, KDEModel from the parameters in [params]
         """
-        return KDEModel(self.label + "_%d_marg" % dim, self._samples[dim][np.newaxis,:])
+        return KDEModel(self._samples[params], self._weights)
 
 
 class AdditiveModel(Model):
@@ -339,6 +347,14 @@ def normalize_samples(samples, bounds):
     """
     norm_samples = np.transpose([((x-b[0])/(b[1]-b[0])) for x, b in zip(samples.T, bounds)])
     return norm_samples
+
+
+def denormalize_samples(norm_samples, bounds):
+    """
+    Denormalizes samples that are drawn from the normalzed KDE
+    """
+    samples = np.transpose([(x*(b[1]-b[0]) + b[0]) for x, b in zip(norm_samples.T, bounds)])
+    return samples
 
 
 def scale_to_unity(bounds):
