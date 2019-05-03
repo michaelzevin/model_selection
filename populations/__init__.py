@@ -7,8 +7,13 @@ import pdb
 
 import numpy as np
 import scipy as sp
+import pandas as pd
 from scipy.stats import gaussian_kde
 from sklearn.neighbors import KernelDensity
+
+# Need to ensure all parameters are normalized over the same range
+param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1)}
+
 """
 Set of classes used to construct statistical models of populations.
 """
@@ -39,7 +44,7 @@ class KDEModel(Model):
         if Nsamps:
             samples = samples.sample(int(Nsamps))
 
-        kde_samples = np.asarray(samples[params])
+        kde_samples = samples[params]
         weights = samples["weight"] if weighting else None
 
         return KDEModel(kde_samples, weights)
@@ -48,12 +53,19 @@ class KDEModel(Model):
     def __init__(self, samples, weights=None):
         self._samples = samples
         self._weights = weights
+
+        # Normalize data s.t. they all are on the unit cube
+        self._norm_params = [param_bounds[param] for param in samples.columns]
+        samples = normalize_samples(np.asarray(samples), self._norm_params)
+
         _kde = KernelDensity(kernel='gaussian', bandwidth=0.01, rtol=1e-8)
-        # FIXME: do we need to normalize the various input parameters?
         _kde.fit(samples, sample_weight=weights)
 
-        # sklearn returns logp
-        self._pdf = lambda x: np.exp(_kde.score_samples(x))
+        # account for unnormalized inputs (sklearn returns logp)
+        # also need to scale pdf by parameter range
+        pdf_scale = scale_to_unity(self._norm_params)
+        self._logpdf = lambda x: _kde.score_samples(normalize_samples(x, self._norm_params))/pdf_scale
+        self._pdf = lambda x: np.exp(_kde.score_samples(normalize_samples(x, self._norm_params)))/pdf_scale
 
         # keep bounds of the samples
         self._bin_edges = []
@@ -319,3 +331,21 @@ def generate_observations(n_obs,fcn, phigh=1.0, smeared=False):
         smeared.append(srx)
     smeared = np.asarray(smeared)
     return smeared
+
+
+def normalize_samples(samples, bounds):
+    """
+    Normalizes samples to range [0,1] for the purposes of KDE construction
+    """
+    norm_samples = np.transpose([((x-b[0])/(b[1]-b[0])) for x, b in zip(samples.T, bounds)])
+    return norm_samples
+
+
+def scale_to_unity(bounds):
+    """
+    Provides scale factor to renormalize pdf evaluation on the original bounds of the data
+    """
+    ranges = [b[1]-b[0] for b in bounds]
+    scale_factor = np.product(ranges)
+    return scale_factor
+

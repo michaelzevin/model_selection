@@ -64,6 +64,15 @@ if VERBOSE:
     print("")
 
 
+import matplotlib.pyplot as plt
+df = models['chi02']['cluster']
+kde  = kde_models['chi02']['cluster']
+bounds = (-1,1)
+plt.hist(df['chieff'], bins=100, range=bounds, density=True, histtype='step', weights=df['weight'])
+vals = np.linspace(bounds[0],bounds[1],100)
+pdf = kde._pdf(vals.reshape(-1,1))
+plt.plot(vals, pdf)
+plt.show()
 
 import pdb; pdb.set_trace()
 
