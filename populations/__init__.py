@@ -30,7 +30,7 @@ class Model(object):
 
 class KDEModel(Model):
     @staticmethod
-    def from_samples(samples, params, weighting=False, Nsamps=None, **kwargs):
+    def from_samples(label, samples, params, weighting=False, Nsamps=None, **kwargs):
         """
         Generate a KDE model instance from samples, where params are series in the samples dataframe. Additional kwargs are passed to nothing at the moment. If weighting is true, will weight the samples used to generate the KDE according to the weights provided in samples.
         """
@@ -47,10 +47,12 @@ class KDEModel(Model):
         kde_samples = samples[params]
         weights = samples["weight"] if weighting else None
 
-        return KDEModel(kde_samples, weights)
+        return KDEModel(label, kde_samples, weights)
 
 
-    def __init__(self, samples, weights=None):
+    def __init__(self, label, samples, weights=None):
+        super()
+        self.label = label
         self._samples = samples
         self._weights = weights
 

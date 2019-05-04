@@ -29,7 +29,7 @@ VERBOSE=True
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
 argp.add_argument("-d", "--dirpath", type=str, default="/Users/michaelzevin/research/model_selection/second_generation/data/processed/", help="Sets the directory path where the models are living. Models must be stored as an hdf file with different keys storing the information about different models. The name of the hdf file is the name of the population (e.g. 'field.hdf' and 'cluster.hdf'.")
-argp.add_argument("-m", "--model", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. If 'gwobs', will use the actual GW observations.")
+argp.add_argument("-m", "--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. If 'gwobs', will use the actual GW observations.")
 argp.add_argument("-b", "--beta", type=float, help="Chooses the branching fraction. The number provided is the fraction of systems that come from the first channel in alphabetical order. Must be set if gwobs not used. Default=None.")
 argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations to be taken from the model. Must be set if gwobs not used. Default=None.")
 argp.add_argument("-s", "--smear", action="store_true", help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. Default=False.")
@@ -43,18 +43,13 @@ argp.add_argument("--random-seed", type=int, help="Use this to set the random se
 args = argp.parse_args()
 
 
-
 # --- Load in models/kdemodels into dict structure: models[model][channel]
 models, kde_models = bbh_models.get_models(args.dirpath, args.params, args.spinmag, weighting=True)
 model_names = list(models.keys())
+model_names.sort()
+channels = list(models[list(models.keys())[0]].keys())
+channels.sort()
 params = args.params
-
-# check to see if the models have the same formation channels
-channels_tmp = models[list(models.keys())[0]].keys()
-for model in models.keys():
-    if models[model].keys() != channels_tmp:
-        raise ValueError("Different models have differing formation channels! Check your hdf keys...")
-channels = list(channels_tmp)
 
 if VERBOSE:
     print("Formation channels: " + ", ".join(channels))
@@ -98,29 +93,50 @@ plt.show()
 """
 
 
+# --- Perform some checks to make sure things are compatible
 
+# check to see if the models have the same formation channels
+for model in model_names:
+    if set(models[model].keys()) != set(channels):
+        raise ValueError("Different models have differing formation channels! Check your hdf keys...")
 
-# --- Check that a value of beta is provided if GWobs not specified
+# check that a value of beta is provided if GWobs not specified
 if not (args.beta or args.GWobs):
     raise ValueError("You need to either specify a branching fraction or choose to instead use GW observations!")
 
-# --- Check that the true model provided is valid is GWobs not specified
-if (args.model not in models.keys()) and (args.model != 'gwobs'):
-    raise NameError("The true model you specified ({0:s}) is not one of the models in {1:s} directory!".format(args.model, args.dirpath))
+# check that the true model provided is valid is GWobs not specified
+if (args.model0 not in model_names) and (args.model0 != 'gwobs'):
+    raise NameError("The true model you specified ({0:s}) is not one of the models in {1:s} directory!".format(args.model0, args.dirpath))
 
 
-# --- Construct the "true" model
-model0 = AdditiveModel()
-for idx, (channel, beta) in enumerate(zip(kde_models[args.model].keys(), (args.beta, 1.0-args.beta))):
-    model0.append_model(kde_models[args.model][channel], beta)
-    if VERBOSE:
-        if idx==0:
-            print("True model range:")
-        print("  {0:s}".format(channel))
-        for param in args.params:
-            print("    {0:s}: {1:0.2f} - {2:0.2f}".format(param, models[args.model][channel][param].min(), models[args.model][channel][param].max()))
-        else:
-            print("")
+
+# --- Initialize additive models and construct the "true" model
+if VERBOSE:
+    print("Constructing additive models...\n")
+
+combined_models, model0 = {}, None
+for model in model_names:
+    # create additive model for each model using all channels
+    combined_models[model] = AdditiveModel()
+
+    # since channels are sorted alphabetically, the first channel has branching fraction beta
+    for idx, (channel, beta) in enumerate(zip(channels, (args.beta, 1.0-args.beta))):
+        combined_models[model].append_model(kde_models[model][channel], beta)
+        if (model == args.model0) and VERBOSE:
+            if idx==0:
+                print("True model range:")
+            print("  {0:s}".format(channel))
+            for param in args.params:
+                print("    {0:s}: {1:0.2f} - {2:0.2f}".format(param, models[args.model0][channel][param].min(), models[args.model0][channel][param].max()))
+            else:
+                print("")
+
+    # if model is the true model, set model0 here (note that this won't be set if GWobs is specified)
+    if model == args.model0:
+        model0 = combined_models[model]
+
+    # freeze model
+    combined_models[model].freeze
 
 import pdb; pdb.set_trace()
 
