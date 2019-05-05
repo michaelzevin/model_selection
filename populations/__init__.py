@@ -301,6 +301,7 @@ class AdditiveModel(Model):
         lower, upper = 0.0, 100.0
         smeared = np.zeros((obsdata.shape[0], n_pos, obsdata.shape[-1]))
         poster = np.zeros((obsdata.shape[0], n_pos, obsdata.shape[-1]))
+        # FIXME: this is too specified for multiple parameters, for now we can estimate by just having a gaussian width associated with each event
         def FM(mc,snr):
             lnM = 1.2*10**(-5.) * (10. / snr) * (mc)**(5./3)
             return mc * np.sqrt(lnM)

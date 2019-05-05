@@ -108,7 +108,8 @@ if (args.model0 not in model_names) and (args.model0 != 'gwobs'):
     raise NameError("The true model you specified ({0:s}) is not one of the models in {1:s} directory!".format(args.model0, args.dirpath))
 
 
-
+import pdb; pdb.set_trace()
+# FIXME: this whole additive model thing is really unnecessary
 # --- Initialize additive models and construct the "true" model
 if VERBOSE:
     print("Constructing additive models...\n")
@@ -143,6 +144,8 @@ for model in model_names:
 
 
 
+
+
 # --- Generate observations ([observations, params, samples])
 
 # Calls gw_obs.py if argument is passed
@@ -154,20 +157,26 @@ if args.model0 == 'gwobs':
         print(*events, sep=', ')
         print("")
 else:
-    obsdata = model0.generate_observations(args.n_observations, phigh=None, smeared=smeared)
+    import pdb; pdb.set_trace()
+    obsdata = model0.generate_observations(args.Nobs, phigh=None, smeared=args.smear)
 
-ndim = obsdata.shape[-1]
+import pdb; pdb.set_trace()
+# FIXME: I don't think we need an additive model at all. Since we can randomly draw from the KDEs already, why don't we just do this to generate observations, with beta coming from channel 0 and (1-beta) coming from channel 1?
+# FIXME: Ok, we DEFINITELY don't need an additive model...
 
 # Freeze the samples into their respective models
 # This is done so as not to recompute p_model(data) over and over
 # again when the observation values aren't going to change
-for label in test_models:
-    test_models[label].freeze_dist(obsdata)
+
+# FIXME: Here we should just freeze each of the individual submodels, since the additive model is never really evaluated on its own
+for label in combined_models:
+    combined_models[label].freeze_dist(obsdata)
 
 submodels = list(test_models.values())
 
 
 
+ndim = obsdata.shape[-1]
 
 ### Plot observations and KDEs ###
 
@@ -278,6 +287,7 @@ def histlnlike(x, data):
     prob = np.zeros(data.shape[0])
 
     # We're iterating over all the submodels of the selected additive model
+    # NOTE: this hits the __call__ in KDEModel
     for smdl, beta in zip(submodels[model_idx], betas):
         prob += beta * smdl(data)
 
