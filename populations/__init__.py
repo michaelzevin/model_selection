@@ -9,10 +9,13 @@ import numpy as np
 import scipy as sp
 import pandas as pd
 from scipy.stats import gaussian_kde
+from scipy.stats import truncnorm
 from sklearn.neighbors import KernelDensity
 
 # Need to ensure all parameters are normalized over the same range
-param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1)}
+_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1)}
+_smear_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043}
+_Nsamps = 100
 
 """
 Set of classes used to construct statistical models of populations.
@@ -57,8 +60,9 @@ class KDEModel(Model):
         self._weights = weights
 
         # Normalize data s.t. they all are on the unit cube
-        self._norm_params = [param_bounds[param] for param in samples.columns]
-        samples = normalize_samples(np.asarray(samples), self._norm_params)
+        self._param_bounds = [_param_bounds[param] for param in samples.columns]
+        self._smear_sigmas = [_smear_sigmas[param] for param in samples.columns]
+        samples = normalize_samples(np.asarray(samples), self._param_bounds)
 
         _kde = KernelDensity(kernel='gaussian', bandwidth=0.01, rtol=1e-8)
         _kde.fit(samples, sample_weight=weights)
@@ -66,9 +70,9 @@ class KDEModel(Model):
 
         # account for unnormalized inputs (sklearn returns logp)
         # also need to scale pdf by parameter range
-        pdf_scale = scale_to_unity(self._norm_params)
-        self._logpdf = lambda x: _kde.score_samples(normalize_samples(x, self._norm_params)) - np.log(pdf_scale)
-        self._pdf = lambda x: np.exp(_kde.score_samples(normalize_samples(x, self._norm_params)))/pdf_scale
+        pdf_scale = scale_to_unity(self._param_bounds)
+        self._logpdf = lambda x: _kde.score_samples(normalize_samples(x, self._param_bounds)) - np.log(pdf_scale)
+        self._pdf = lambda x: np.exp(_kde.score_samples(normalize_samples(x, self._param_bounds)))/pdf_scale
 
         # keep bounds of the samples
         self._bin_edges = []
@@ -83,8 +87,14 @@ class KDEModel(Model):
         Samples KDE and denormalizes sampled data
         """
         samps_norm = self._kde.sample(n_samples=N, random_state=random_state)
-        samps =  denormalize_samples(samps_norm, self._norm_params)
+        samps =  denormalize_samples(samps_norm, self._param_bounds)
         return samps
+
+    def rel_frac(self, beta):
+        """
+        Stores the relative fraction of samples that are drawn from this KDE model
+        """
+        self._rel_frac = beta
 
     def bin_centers(self):
         """
@@ -102,17 +112,17 @@ class KDEModel(Model):
 
     def __call__(self, data, data_pdf=None):
         """
-        The expectation is that "data" is a n_obs x n_sample x n_dim array. If data_pdf is None, each observation is expected to have equal posterior probability. Otherwise, the posterior values should be provided as the same dimensions of the samples.
+        The expectation is that "data" is a n_obs x n_sample x n_obs array. If data_pdf is None, each observation is expected to have equal posterior probability. Otherwise, the posterior values should be provided as the same dimensions of the samples.
         """
         if self._cached_values is not None:
             return self._cached_values
 
         prob = np.ones(data.shape[0]) * 1e-20
-        for i, obs in enumerate(np.atleast_3d(data)):
-            # FIXME: Incorrect normalization on "ones"?
-            # THIS IS WHERE THE POSTERIOR SAMPLES ARE TURNED INTO PROBABILITY
+        for idx, obs in enumerate(np.atleast_3d(data)):
+            # Evaluate the KDE at the samples
             d_pdf = data_pdf[i] if data_pdf is not None else 1
-            prob[i] += np.sum(self._pdf(obs) / d_pdf)
+            # FIXME: does it matter that this the average rather than the sum? 
+            prob[idx] += np.sum(self._pdf(obs) / d_pdf) / len(obs)
         return prob
 
     def extent(self):
@@ -121,27 +131,40 @@ class KDEModel(Model):
         bmax = bc.max(axis=0)
         return np.asarray([bmin, bmax])
 
-    def plot(self, ax=None, **kwargs):
-        """
-        If a matplotlib.axes.Axes object is provided, plot a graph of the pdf on the axes. Otherwise, return the information needed to do so.
-        """
-        dim = kwargs.pop("dim") if "dim" in kwargs else None
-
-        if dim is not None:
-            newkde = self.marginalize_to(dim)
-            return newkde.plot(ax, **kwargs)
-
-        _eval_pts = self.bin_centers()
-        self._bin_heights = self._pdf(_eval_pts)
-        if ax is not None:
-            ax.plot(np.squeeze(_eval_pts), self._bin_heights, **kwargs)
-        return _eval_pts, self._bin_heights
-
     def marginalize(self, params):
         """
         Generate a new, lower dimensional, KDEModel from the parameters in [params]
         """
         return KDEModel(self._samples[params], self._weights)
+
+    def generate_observations(self, Nobs, smeared=None):
+        """
+        Generates samples from KDE model. This will generated Nobs samples. If smeared is not None, will return _Nsamps posterior samples according to the available methods. 
+        """
+
+        obsdata = self.sample(Nobs)
+        obsdata = np.expand_dims(obsdata, 1)
+
+        if not smeared:
+            # assume a delta function measurement
+            return obsdata
+
+        # smear out observations 
+        if smeared not in ["gaussian"]:
+            raise ValueError("Unspecified smearing procedure: {0:s}".format(smeared))
+        
+        if smeared == "gaussian":
+            import pdb; pdb.set_trace()
+            for idx, obs in enumerate(obsdata):
+                for pidx in np.arange(obsdata.shape[-1]):
+                    mu = obs[:, pidx]
+                    sigma = self._smear_sigmas[pidx]
+                    low_lim = self._param_bounds[pidx][0]
+                    high_lim = self._param_bounds[pidx][1]
+                    dist = truncnorm((low_lim-mu)/sigma, (high_lim-mu)/sigma, loc=mu, scale=sigma)
+                    obsdata[idx, :, pidx] = dist.rvs(Nobs)
+            return obsdata
+
 
 
 class AdditiveModel(Model):
@@ -317,31 +340,6 @@ class AdditiveModel(Model):
         # FIXME We will have another line here that provides the lalinference prior here
         return smeared   #, poster
 
-
-def generate_observations(n_obs,fcn, phigh=1.0, smeared=False):
-    """
-    Generate a set of observations from a given model. Generic function, but could be supplanted by more specific model generators.
-    """
-    obsdata = []
-
-    while len(obsdata) < n_obs:
-        rx = np.random.uniform(3, 80, n_obs)
-        ry = np.random.uniform(0., phigh, n_obs)
-        px = fcn(np.atleast_2d(rx).T)
-        obsdata.extend(rx[px>ry])
-    obsdata = np.asarray(obsdata)[:n_obs]
-    if not smeared:
-        return obsdata
-
-    #
-    # Smear out data
-    #
-    smeared = []
-    for datapoint in obsdata:
-        srx = np.random.normal(datapoint, 1, 100)
-        smeared.append(srx)
-    smeared = np.asarray(smeared)
-    return smeared
 
 
 def normalize_samples(samples, bounds):
