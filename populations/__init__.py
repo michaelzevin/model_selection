@@ -142,27 +142,30 @@ class KDEModel(Model):
         Generates samples from KDE model. This will generated Nobs samples. If smeared is not None, will return _Nsamps posterior samples according to the available methods. 
         """
 
-        obsdata = self.sample(Nobs)
-        obsdata = np.expand_dims(obsdata, 1)
+        observations = self.sample(Nobs)
 
         if not smeared:
             # assume a delta function measurement
+            obsdata = np.expand_dims(observations, 1)
             return obsdata
 
         # smear out observations 
         if smeared not in ["gaussian"]:
             raise ValueError("Unspecified smearing procedure: {0:s}".format(smeared))
         
+        # set up obsdata as [obs, samps, params]
+        obsdata = np.zeros((Nobs, _Nsamps, observations.shape[-1]))
+
         if smeared == "gaussian":
-            import pdb; pdb.set_trace()
-            for idx, obs in enumerate(obsdata):
-                for pidx in np.arange(obsdata.shape[-1]):
-                    mu = obs[:, pidx]
+            for idx, obs in enumerate(observations):
+                for pidx in np.arange(observations.shape[-1]):
+                    mu = obs[pidx]
                     sigma = self._smear_sigmas[pidx]
                     low_lim = self._param_bounds[pidx][0]
                     high_lim = self._param_bounds[pidx][1]
                     dist = truncnorm((low_lim-mu)/sigma, (high_lim-mu)/sigma, loc=mu, scale=sigma)
-                    obsdata[idx, :, pidx] = dist.rvs(Nobs)
+                    obsdata[idx, :, pidx] = dist.rvs(_Nsamps)
+
             return obsdata
 
 

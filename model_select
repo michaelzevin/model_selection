@@ -163,9 +163,6 @@ else:
             obsdata = np.concatenate((obsdata, model0[channel].generate_observations(Nobs_per_channel, smeared=args.smear)))
 
 
-import pdb; pdb.set_trace()
-
-
 
 # --- Freeze sample evaluations in each model (this is time consuming, but only needs to be done once for each KDE model. Lower the number of samples per observation to speed this up.)
 if VERBOSE:
