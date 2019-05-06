@@ -26,8 +26,8 @@ for gw in _events:
 
 
 
-def generate_observations(params, smeared=None):        
-    
+def generate_observations(params, smeared=None):
+
     # Just take the median values
     if not smeared:
         samples_shape = (len(_events), 1, len(params))

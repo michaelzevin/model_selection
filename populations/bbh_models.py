@@ -11,6 +11,8 @@ from .transform import _DEFAULT_TRANSFORMS, _to_chi_eff, _uniform_spinmag, _isot
 
 VERBOSE=True
 
+_Nsamps=1e4
+
 
 _VALID_SPIN_DISTR = {
     # Uniform - |a| ~ uniform distribution in 0, 1
@@ -82,9 +84,8 @@ def get_models(dirpath, params, spin_distr=None, weighting=False, **kwargs):
             df = models[mdl_name][channel]
 
             label = mdl_name + '_' + channel
-            mdl = KDEModel.from_samples(label, df, params, weighting=weighting, Nsamps=1e4)
+            mdl = KDEModel.from_samples(label, df, params, weighting=weighting, Nsamps=_Nsamps)
             kde_models[mdl_name][channel] = mdl
 
     return models, kde_models
-
 
