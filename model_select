@@ -22,7 +22,7 @@ VERBOSE=True
 
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
-argp.add_argument("-d", "--dirpath", type=str, default="/Users/michaelzevin/research/model_selection/second_generation/data/processed/channel_test/", help="Sets the directory path where the models are living. Models must be stored as an hdf file with different keys storing the information about different models. The name of the hdf file is the name of the population (e.g. 'field.hdf' and 'cluster.hdf'.")
+argp.add_argument("-d", "--dirpath", type=str, required=True, help="Sets the directory path where the models are living. Models must be stored as an hdf file with different keys storing the information about different models. The name of the hdf file is the name of the population (e.g. 'field.hdf' and 'cluster.hdf'.")
 argp.add_argument("-m", "--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. If 'gwobs', will use the actual GW observations.")
 argp.add_argument("-b", "--beta", nargs="*", help="Chooses the branching fraction. The number provided is the fraction of systems that come from each channel in alphabetical order. Must be set if gwobs not used. Can provide Nchannel values (which must sum to unity) or Nchannel-1 values (which must be less than 1.0, and the last branching fraction is inferred). Default=None.")
 argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations to be taken from the model. Must be set if gwobs not used. Default=None.")
