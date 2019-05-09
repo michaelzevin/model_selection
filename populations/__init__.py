@@ -60,7 +60,7 @@ class KDEModel(Model):
         self._weights = weights
 
         # Normalize data s.t. they all are on the unit cube
-        self._param_bounds = [_param_bounds[param] for param in samples.columns]
+        self._param_bounds = [_param_bounds[param] for param in samples.keys()]
         self._smear_sigmas = [_smear_sigmas[param] for param in samples.columns]
         samples = normalize_samples(np.asarray(samples), self._param_bounds)
 
@@ -121,7 +121,7 @@ class KDEModel(Model):
         for idx, obs in enumerate(np.atleast_3d(data)):
             # Evaluate the KDE at the samples
             d_pdf = data_pdf[i] if data_pdf is not None else 1
-            # FIXME: does it matter that this the average rather than the sum? 
+            # FIXME: does it matter that this the average rather than the sum?
             prob[idx] += np.sum(self._pdf(obs) / d_pdf) / len(obs)
         return prob
 
@@ -135,11 +135,16 @@ class KDEModel(Model):
         """
         Generate a new, lower dimensional, KDEModel from the parameters in [params]
         """
-        return KDEModel(self._samples[params], self._weights)
+        label = self.label
+        for p in params:
+            label += '_'+p
+        label += '_marginal'
+
+        return KDEModel(label, self._samples[params], self._weights)
 
     def generate_observations(self, Nobs, smeared=None):
         """
-        Generates samples from KDE model. This will generated Nobs samples. If smeared is not None, will return _Nsamps posterior samples according to the available methods. 
+        Generates samples from KDE model. This will generated Nobs samples. If smeared is not None, will return _Nsamps posterior samples according to the available methods.
         """
 
         observations = self.sample(Nobs)
@@ -149,10 +154,10 @@ class KDEModel(Model):
             obsdata = np.expand_dims(observations, 1)
             return obsdata
 
-        # smear out observations 
+        # smear out observations
         if smeared not in ["gaussian"]:
             raise ValueError("Unspecified smearing procedure: {0:s}".format(smeared))
-        
+
         # set up obsdata as [obs, samps, params]
         obsdata = np.zeros((Nobs, _Nsamps, observations.shape[-1]))
 
@@ -167,6 +172,7 @@ class KDEModel(Model):
                     obsdata[idx, :, pidx] = dist.rvs(_Nsamps)
 
             return obsdata
+
 
 
 
@@ -194,4 +200,9 @@ def scale_to_unity(bounds):
     ranges = [b[1]-b[0] for b in bounds]
     scale_factor = np.product(ranges)
     return scale_factor
+
+
+
+
+
 

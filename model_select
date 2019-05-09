@@ -14,11 +14,13 @@ import pandas as pd
 import scipy.stats
 
 from populations import bbh_models
+from populations import msplot
 
 import emcee
 from emcee import PTSampler
 
 VERBOSE=True
+MAKE_PLOTS=True
 
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
@@ -46,6 +48,9 @@ channels = list(models[list(models.keys())[0]].keys())
 channels.sort()
 params = args.params
 
+# see if we're using GW observations
+gwobs = True if args.model0=='gwobs' else False
+
 # construct dict that relates submodels to their index number
 submodels_dict = {}
 for idx, model in enumerate(model_names):
@@ -67,20 +72,20 @@ for model in model_names:
         raise ValueError("Different models have differing formation channels! Check your hdf keys...")
 
 # check that a value of beta is provided if gwobs not specified
-if args.model0 != 'gwobs':
+if not gwobs:
     if not args.beta:
         raise ValueError("You need to either specify branching fractions or choose to instead use GW observations!")
 
 # check that the true model provided is valid is gwobs not specified
-if (args.model0 not in model_names) and (args.model0 != 'gwobs'):
+if (args.model0 not in model_names and not gwobs):
     raise ValueError("The true model you specified ({0:s}) is not one of the models in {1:s} directory!".format(args.model0, args.dirpath))
 
 # check that Nobs was specified if not using gwobs
-if (args.model0 != 'gwobs') and not args.Nobs:
+if not gwobs and not args.Nobs:
     raise ValueError("You need to specify and number of observations to be drawn from the 'true' model if not using GW observations!")
 
 # parse the branching ratio values and check for errors
-if args.model0 != 'gwobs':
+if not gwobs:
     betas = [float(x) for x in args.beta]
     if (len(betas) != len(channels)) and (len(betas) != len(channels)-1):
         raise ValueError("Must specify {0:d} or {1:d} branching fractions, you provided {2:d}!".format(len(channels)-1, len(channels), len(betas)))
@@ -93,7 +98,7 @@ if args.model0 != 'gwobs':
         betas.append(1.0 - np.sum(betas))
 
 # --- If model0 specified, save relative fractions for each KDE model and store model0
-if args.model0 != 'gwobs':
+if not gwobs:
     if VERBOSE:
         print("Saving relative fractions and storing true model...\n")
 
@@ -114,14 +119,14 @@ if args.model0 != 'gwobs':
                         print("")
 
 
-
 # --- Generate observations ([observations, params, samples])
 if VERBOSE:
     print("Generating observations...\n")
 
 # Calls gw_obs.py if argument is passed
-if args.model0 == 'gwobs':
+if gwobs:
     from populations import gw_obs
+    model0=None
     obsdata, events = gw_obs.generate_observations(params, smeared=args.smear)
     if VERBOSE:
         print("Using the following GW observations for inference:")
@@ -142,6 +147,12 @@ else:
 
 
 
+# Plot the KDEs and observations
+if MAKE_PLOTS==True:
+    print("Plotting marginalized KDE models...\n")
+    msplot.plot_1D_kdemodels(kde_models, params, obsdata, model0, plot_obs=True, plot_obs_samples=False)
+
+
 # --- Freeze sample evaluations in each model (This is time consuming, but only needs to be done once for each KDE model so we don't need to recompute p_model(data) over and over again when the observation values aren't going to change. Lower the number of samples per observation to speed this up.)
 if VERBOSE:
     print("Freezing sample evaluations in their respective models...")
@@ -150,7 +161,7 @@ for model in model_names:
         if VERBOSE:
             print("  {0:s}, {1:s}".format(model, channel))
         kde_models[model][channel].freeze(obsdata)
-if VERBOSE: 
+if VERBOSE:
     print("Done freezing KDE evaluations of observations!\n")
 
 
@@ -242,15 +253,27 @@ burnin = 1000
 nsamps_after_burning = (nsteps-burnin)
 samples = sampler.chain[:,:,burnin:,:]
 lnprb = sampler.lnprobability[:,:,burnin:]
-# reshape to have all steps from all walkers in a single dimension
-samples = samples.reshape((ntemps, nwalkers * nsamps_after_burning, ndim))
+
+# synthesize last betas, since they sum to unity
+last_betas = (1.0-np.sum(samples[...,1:], axis=3))
+last_betas = np.expand_dims(last_betas, axis=3)
+samples = np.concatenate((samples, last_betas), axis=3)
+
+# Plot samples and histograms of betas per model
+if MAKE_PLOTS==True:
+    print("Plotting samples...\n")
+    msplot.plot_samples(samples, model_names, channels, model0)
+
+
+# reshape to have all steps from all walkers in a single dimension (note that we added a dim for the last beta that we synthesized)
+samples = samples.reshape((ntemps, nwalkers * nsamps_after_burning, ndim+1))
 lnprb = lnprb.reshape((ntemps, nwalkers * nsamps_after_burning))
 
 # Parse out the model index in low-T chain
 smdl_counts = np.floor(samples[0,:,0]).astype(int)
 
 # Print summary info about the sampling
-if VERBOSE: 
+if VERBOSE:
     print("Sample breakdown:")
     for smdl_idx, smdl in enumerate(model_names):
         counts = len(smdl_counts[smdl_counts == smdl_idx])
@@ -263,6 +286,7 @@ if VERBOSE:
     print("")
 
 
+
 # --- Save samples
 
 if args.save_samples:
@@ -271,7 +295,7 @@ if args.save_samples:
     else:
         fname = "output.hdf5"
 
-    if VERBOSE: 
+    if VERBOSE:
         print("Saving information to '{0:s}'...\n".format(fname))
 
     hfile = h5py.File(fname, "w")
@@ -299,8 +323,6 @@ if args.save_samples:
     group.attrs["inference_params"] = labels
 
     # synthesize last beta, since they sum to unity
-    last_betas = (1.0-np.sum(samples[:,:,1:], axis=2))
-    samples = np.concatenate((samples, np.atleast_3d(last_betas)), axis=2)
     for lbl, d in zip(labels, samples.T):
         group.create_dataset(lbl, data=d)
     hfile.close()

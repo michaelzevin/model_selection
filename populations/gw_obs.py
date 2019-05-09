@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 """
-Function for using GW observations for generating the observations in model selection. Events should be stored as dataframes in hdf5 files ('GWXXXXXX*.hdf5') with the parameters being series in these dataframes. The key containing the posterior samples should be names 'posterior_samples'. 
+Function for using GW observations for generating the observations in model selection. Events should be stored as dataframes in hdf5 files ('GWXXXXXX*.hdf5') with the parameters being series in these dataframes. The key containing the posterior samples should be names 'posterior_samples'.
 """
 
 # gw events to be used
@@ -37,8 +37,11 @@ def generate_observations(params, smeared=None):
             df = pd.read_hdf(_path+f, key='posterior_samples')
             for pidx, p in enumerate(params):
                 samples[idx, :, pidx] = np.median(df[p])
-                
+
         return samples, _events
+
+    if smeared not in ['gaussian', 'posteriors']:
+        raise ValueError("{0:s} is not an available options for smearing GW observations!".format(smeared))
 
     # Smear out data using a Gaussian
     if smeared=='gaussian':

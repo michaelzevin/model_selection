@@ -30,7 +30,7 @@ def get_models(dirpath, params, spin_distr=None, weighting=False, **kwargs):
     """
     Call this to get all the models and submodels living in dir, as well as KDEs of these models, packed inside of dictionaries labelled in the dict structure models[model][channel].
 
-    Will first look for these parameters as series in the dataframe. If they are not present, it will try to construct these parameters if the valid transformations are present in transforms.py. 
+    Will first look for these parameters as series in the dataframe. If they are not present, it will try to construct these parameters if the valid transformations are present in transforms.py.
 
     If chieff is one of the params for inference and spin magnitudes are not provided, this function will first check if spin_distr is provided and if so, will generate spin magnitudes and calculate chieff using these spins and the m1/m2 specified in the dataframes.
     """
