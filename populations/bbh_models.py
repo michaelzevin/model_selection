@@ -6,7 +6,7 @@ import h5py
 import pdb
 
 from . import *
-from .transform import _DEFAULT_TRANSFORMS, _to_chi_eff, _uniform_spinmag, _isotropic_spinmag
+from .utils.transform import _DEFAULT_TRANSFORMS, _to_chi_eff, _uniform_spinmag, _isotropic_spinmag
 
 
 VERBOSE=True
