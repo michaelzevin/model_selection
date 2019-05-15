@@ -7,7 +7,7 @@ Function for using GW observations for generating the observations in model sele
 """
 
 # gw events to be used
-_path = "/Users/michaelzevin/research/model_selection/second_generation/data/GW_observations/"
+_path = "/projects/b1095/michaelzevin/model_selection/second_generation/data/GW_observations/"
 _events = ["GW150914","GW151012","GW151226","GW170104","GW170608","GW170729","GW170809","GW170814","GW170818","GW170823"]
 _Nsamps=100
 _files = []
