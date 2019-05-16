@@ -26,8 +26,10 @@ MAKE_PLOTS=True
 argp = argparse.ArgumentParser()
 argp.add_argument("-d", "--dirpath", type=str, required=True, help="Sets the directory path where the models are living. Models must be stored as an hdf file with different keys storing the information about different models. The name of the hdf file is the name of the population (e.g. 'field.hdf' and 'cluster.hdf'.")
 argp.add_argument("-m", "--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. If 'gwobs', will use the actual GW observations.")
+argp.add_argument("-gw", "--gwpath", type=str, help="Sets the path for where the GW samples are living. Default=None.")
 argp.add_argument("-b", "--beta", nargs="*", help="Chooses the branching fraction. The number provided is the fraction of systems that come from each channel in alphabetical order. Must be set if gwobs not used. Can provide Nchannel values (which must sum to unity) or Nchannel-1 values (which must be less than 1.0, and the last branching fraction is inferred). Default=None.")
 argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations to be taken from the model. Must be set if gwobs not used. Default=None.")
+argp.add_argument("-N", "--Nsamps", type=int, default=100, help="Number of samples to be drawn from the posterior distributions and used to construct the KDE models. Default=100.")
 argp.add_argument("-s", "--smear", type=str, help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posterior'), or from a mock gaussian ('gaussian'). For mock observations, you can currently choose 'gaussian' to smear according to the average spread in parameters from current GW observations. Default=None.")
 argp.add_argument("-p", "--params", nargs="+", default="mchirp", help="Specifies the parameters you wish to use in the inference. Default=mchirp.")
 argp.add_argument("-sm", "--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the sping magnitude is not specified. Default is None.")
@@ -127,7 +129,7 @@ if VERBOSE:
 if gwobs:
     from populations import gw_obs
     model0=None
-    obsdata, events = gw_obs.generate_observations(params, smeared=args.smear)
+    obsdata, events = gw_obs.generate_observations(params, args.gwpath, args.Nsamps, args.smear)
     if VERBOSE:
         print("Using the following GW observations for inference:")
         print(*events, sep=', ')
@@ -140,10 +142,10 @@ else:
         # FIXME: the floors and ceilings here are a bit hacky but ensure that we have a total of Nobs samples drawn when Nobs*beta is not an integer
         if idx==0:
             Nobs_per_channel = int(np.floor(args.Nobs * model0[channel]._rel_frac))
-            obsdata = model0[channel].generate_observations(Nobs_per_channel, smeared=args.smear)
+            obsdata = model0[channel].generate_observations(Nobs_per_channel, args.Nsamps, args.smear)
         else:
             Nobs_per_channel = int(np.ceil(args.Nobs * model0[channel]._rel_frac))
-            obsdata = np.concatenate((obsdata, model0[channel].generate_observations(Nobs_per_channel, smeared=args.smear)))
+            obsdata = np.concatenate((obsdata, model0[channel].generate_observations(Nobs_per_channel, args.Nsamps, args.smear)))
 
 
 

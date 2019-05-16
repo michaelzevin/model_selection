@@ -15,7 +15,6 @@ from sklearn.neighbors import KernelDensity
 # Need to ensure all parameters are normalized over the same range
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1)}
 _smear_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043}
-_Nsamps = 100
 
 """
 Set of classes used to construct statistical models of populations.
@@ -142,9 +141,9 @@ class KDEModel(Model):
 
         return KDEModel(label, self._samples[params], self._weights)
 
-    def generate_observations(self, Nobs, smeared=None):
+    def generate_observations(self, Nobs, Nsamps=1, smeared=None):
         """
-        Generates samples from KDE model. This will generated Nobs samples. If smeared is not None, will return _Nsamps posterior samples according to the available methods.
+        Generates samples from KDE model. This will generated Nobs samples. If smeared is not None, will return Nsamps posterior samples according to the available methods.
         """
 
         observations = self.sample(Nobs)
@@ -159,7 +158,7 @@ class KDEModel(Model):
             raise ValueError("Unspecified smearing procedure: {0:s}".format(smeared))
 
         # set up obsdata as [obs, samps, params]
-        obsdata = np.zeros((Nobs, _Nsamps, observations.shape[-1]))
+        obsdata = np.zeros((Nobs, Nsamps, observations.shape[-1]))
 
         if smeared == "gaussian":
             for idx, obs in enumerate(observations):
@@ -169,7 +168,7 @@ class KDEModel(Model):
                     low_lim = self._param_bounds[pidx][0]
                     high_lim = self._param_bounds[pidx][1]
                     dist = truncnorm((low_lim-mu)/sigma, (high_lim-mu)/sigma, loc=mu, scale=sigma)
-                    obsdata[idx, :, pidx] = dist.rvs(_Nsamps)
+                    obsdata[idx, :, pidx] = dist.rvs(Nsamps)
 
             return obsdata
 
