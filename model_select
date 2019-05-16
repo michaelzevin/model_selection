@@ -131,13 +131,13 @@ if gwobs:
     model0=None
     obsdata, events = gw_obs.generate_observations(params, args.gwpath, args.Nsamps, args.smear)
     if VERBOSE:
-        print("Using the following GW observations for inference:")
+        print("Using the following {0:d} GW observations for inference:".format(len(events)))
         print(*events, sep=', ')
         print("")
 
 else:
     if VERBOSE:
-        print("Drawing observations from the true model...\n")
+        print("Drawing {0:d} observations from the true model...\n".format(int(args.Nobs)))
     for idx, channel in enumerate(model0):
         # FIXME: the floors and ceilings here are a bit hacky but ensure that we have a total of Nobs samples drawn when Nobs*beta is not an integer
         if idx==0:
