@@ -11,10 +11,14 @@ import pandas as pd
 from scipy.stats import gaussian_kde
 from scipy.stats import truncnorm
 from sklearn.neighbors import KernelDensity
+from statsmodels.nonparametric.kde import KDEUnivariate
+from statsmodels.nonparametric.kernel_density import KDEMultivariate
 
 # Need to ensure all parameters are normalized over the same range
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1)}
 _smear_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043}
+
+_kde_method = 'scikit'
 
 """
 Set of classes used to construct statistical models of populations.
@@ -52,7 +56,7 @@ class KDEModel(Model):
         return KDEModel(label, kde_samples, weights)
 
 
-    def __init__(self, label, samples, weights=None):
+    def __init__(self, label, samples, weights=None, kde_method=_kde_method):
         super()
         self.label = label
         self._samples = samples
@@ -63,15 +67,31 @@ class KDEModel(Model):
         self._smear_sigmas = [_smear_sigmas[param] for param in samples.columns]
         samples = normalize_samples(np.asarray(samples), self._param_bounds)
 
-        _kde = KernelDensity(kernel='gaussian', bandwidth=0.01, rtol=1e-8)
-        _kde.fit(samples, sample_weight=weights)
+        # also need to scale pdf by parameter range, so save this
+        pdf_scale = scale_to_unity(self._param_bounds)
+
+        # get the KDE objects, specify functions for pdf and logpdf
+        if kde_method=='scipy':
+            _kde = gaussian_kde(samples.T, weights=weights, bw_method='scott')
+            self._logpdf = lambda x: _kde.logpdf(normalize_samples(x, self._param_bounds).T) - np.log(pdf_scale)
+            self._pdf = lambda x: _kde.pdf(normalize_samples(x, self._param_bounds).T)/pdf_scale
+
+        elif kde_method=='scikit':
+            bw_scott = samples.shape[0]**(-1./(samples.shape[1]+4))
+            _kde = KernelDensity(kernel='gaussian', bandwidth=0.01, rtol=1e-8)
+            _kde.fit(samples, sample_weight=weights)
+            self._logpdf = lambda x: _kde.score_samples(normalize_samples(x, self._param_bounds)) - np.log(pdf_scale)
+            self._pdf = lambda x: np.exp(_kde.score_samples(normalize_samples(x, self._param_bounds)))/pdf_scale
+
+        elif kde_method=='statsmodels':
+            # this does not support weighted samples
+            _kde = KDEMultivariate(samples, var_type='uuu')
+            self._logpdf = lambda x: np.log(_kde.pdf(normalize_samples(x, self._param_bounds))) - np.log(pdf_scale)
+            self._pdf = lambda x: _kde.pdf(normalize_samples(x, self._param_bounds))/pdf_scale
+
+
         self._kde = _kde
 
-        # account for unnormalized inputs (sklearn returns logp)
-        # also need to scale pdf by parameter range
-        pdf_scale = scale_to_unity(self._param_bounds)
-        self._logpdf = lambda x: _kde.score_samples(normalize_samples(x, self._param_bounds)) - np.log(pdf_scale)
-        self._pdf = lambda x: np.exp(_kde.score_samples(normalize_samples(x, self._param_bounds)))/pdf_scale
 
         # keep bounds of the samples
         self._bin_edges = []
@@ -81,11 +101,19 @@ class KDEModel(Model):
 
         self._cached_values = None
 
-    def sample(self, N=1):
+    def sample(self, N=1, kde_method=_kde_method):
         """
         Samples KDE and denormalizes sampled data
         """
-        samps_norm = self._kde.sample(n_samples=N)
+        if kde_method=='scipy':
+            samps_norm = self._kde.resample(N).T
+
+        elif kde_method=='scikit':
+            samps_norm = self._kde.sample(n_samples=N)
+
+        elif kde_method=='statsmodels':
+            raise NameError("Sampling for statsmodels not implemented yet...")
+
         samps =  denormalize_samples(samps_norm, self._param_bounds)
         return samps
 
