@@ -8,6 +8,8 @@ Function for using GW observations for generating the observations in model sele
 
 # gw events to be used
 _events = ["GW150914","GW151012","GW151226","GW170104","GW170608","GW170729","GW170809","GW170814","GW170818","GW170823"]
+#_events += ["S190521g"]
+#_events += ["S190408an","S190412m","S190421ar","S190512at","S190513bm","S190517h","S190521g"]
 _files = []
 
 
