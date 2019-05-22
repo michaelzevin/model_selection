@@ -60,7 +60,7 @@ for idx, model in enumerate(model_names):
 
 if VERBOSE:
     print("Formation channels: " + ", ".join(channels))
-    print("Astrophysical models: " + ", ".join(models.keys()))
+    print("Astrophysical models: " + ", ".join(model_names))
     print("Parameters for inference: " + ", ".join(params))
     print("")
 
@@ -244,7 +244,7 @@ for idx, result in enumerate(sampler.sample(p0PT, iterations=nsteps)):
         if (idx+1) % 50 == 0:
             sys.stderr.write("\r  {0}% (N={1})".format(float(idx+1)*100. / nsteps, idx+1))
 if VERBOSE:
-    print("Sampling complete!\n")
+    print("\nSampling complete!\n")
 
 
 
