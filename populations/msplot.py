@@ -58,7 +58,7 @@ _param_bounds = {"mchirp": (0,70), "q": (0,1), "chieff": (-1,1)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", "chieff": r"$\chi_{\rm eff}$"}
 _Nsamps = 10000
 
-def plot_1D_kdemodels(kde_models, params, obsdata, model0, plot_obs=False, plot_obs_samples=False):
+def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=False, plot_obs_samples=False):
     """
     Plots all the KDEs for each channel in each model, as well as the *true* model described by the input branching fraction.
     """
@@ -155,13 +155,17 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, plot_obs=False, plot_
     else:
         model0_name='GW observations'
     plt.suptitle("Sampled model: {0:s}".format(model0_name), fontsize=40)
-    plt.savefig('marginalized_kdes.png')
+    if name:
+        fname = 'marginalized_kdes_'+name+'.png'
+    else:
+        fname = 'marginalized_kdes.png'
+    plt.savefig(fname)
     plt.close()
 
 
 
 
-def plot_samples(samples, model_names, channels, model0):
+def plot_samples(samples, model_names, channels, model0, name=None):
     """
     Plots the models that the chains are exploring, and histograms of the branching fraction recovered for each model.
     """
@@ -188,10 +192,16 @@ def plot_samples(samples, model_names, channels, model0):
                 ax_chains[cidx].scatter(steps[smdl_locs], chain[smdl_locs,cidx+1], color=colors[midx], s=0.5, alpha=0.2)
 
     # plot the histograms on beta for each model
+    basemdl_samps = len(np.argwhere(samples[:,:,0]==0))
     for midx, model in enumerate(model_names):
         smdl_locs = np.argwhere(samples[:,:,0]==midx)
+        mdl_samps = len(smdl_locs)
+        if basemdl_samps > 0:
+            BF = float(mdl_samps)/basemdl_samps
+        else:
+            BF = float(mdl_samps)
         for cidx, channel in enumerate(channels):
-            ax_margs[cidx].hist(samples[smdl_locs[:,0], smdl_locs[:,1], cidx+1], orientation='horizontal', histtype='step', color=colors[midx], bins=50, alpha=0.7, label=model)
+            ax_margs[cidx].hist(samples[smdl_locs[:,0], smdl_locs[:,1], cidx+1], orientation='horizontal', histtype='step', color=colors[midx], bins=50, alpha=0.7, label=model+', BF={0:0.1e}'.format(BF))
 
 
     # format plot
@@ -204,7 +214,7 @@ def plot_samples(samples, model_names, channels, model0):
 
         # legend
         if cidx == 0:
-            ax_marg.legend(loc='upper right', prop={'size':15})
+            ax_marg.legend(loc='upper right', prop={'size':12})
 
         if cidx == len(channels)-1:
             ax_chain.set_xlabel('Step', fontsize=20)
@@ -223,7 +233,13 @@ def plot_samples(samples, model_names, channels, model0):
     else:
         model0_name='GW observations'
     plt.suptitle("True model: {0:s}".format(model0_name), fontsize=30)
-    plt.savefig('samples.png')
+    if name:
+        fname = 'samples_'+name+'.png'
+    else:
+        fname = 'samples.png'
+    plt.savefig(fname)
     plt.close()
+
+
 
 

@@ -152,7 +152,7 @@ else:
 # Plot the KDEs and observations
 if MAKE_PLOTS==True:
     print("Plotting marginalized KDE models...\n")
-    msplot.plot_1D_kdemodels(kde_models, params, obsdata, model0, plot_obs=True, plot_obs_samples=False)
+    msplot.plot_1D_kdemodels(kde_models, params, obsdata, model0, name=args.name, plot_obs=True, plot_obs_samples=False)
 
 
 # --- Freeze sample evaluations in each model (This is time consuming, but only needs to be done once for each KDE model so we don't need to recompute p_model(data) over and over again when the observation values aren't going to change. Lower the number of samples per observation to speed this up.)
@@ -264,7 +264,7 @@ samples = np.concatenate((samples, last_betas), axis=3)
 # Plot samples and histograms of betas per model
 if MAKE_PLOTS==True:
     print("Plotting samples...\n")
-    msplot.plot_samples(samples, model_names, channels, model0)
+    msplot.plot_samples(samples, model_names, channels, model0, name=args.name)
 
 
 # reshape to have all steps from all walkers in a single dimension (note that we added a dim for the last beta that we synthesized)
