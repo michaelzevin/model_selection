@@ -62,7 +62,8 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=F
     """
     Plots all the KDEs for each channel in each model, as well as the *true* model described by the input branching fraction.
     """
-    fig, axs = plt.subplots(len(kde_models), len(params), figsize=(5*len(kde_models), 6*len(params)))
+    fig, axs = plt.subplots(len(kde_models), len(params), figsize=(6*len(params), 5*len(kde_models)))
+    axs = axs.reshape(len(kde_models), len(params))
 
     model_names = list(kde_models.keys())
     model_names.sort()

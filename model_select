@@ -18,7 +18,7 @@ from populations import msplot
 from populations import sample
 
 VERBOSE=True
-MAKE_PLOTS=False
+MAKE_PLOTS=True
 
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
