@@ -15,9 +15,7 @@ import scipy.stats
 
 from populations import bbh_models
 from populations import msplot
-
-import emcee
-from emcee import PTSampler
+from populations import sample
 
 VERBOSE=True
 MAKE_PLOTS=True
@@ -34,6 +32,7 @@ argp.add_argument("-s", "--smear", type=str, help="Smear out observations in a m
 argp.add_argument("-p", "--params", nargs="+", default="mchirp", help="Specifies the parameters you wish to use in the inference. Default=mchirp.")
 argp.add_argument("-sm", "--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the sping magnitude is not specified. Default is None.")
 argp.add_argument("-S", "--save-samples", action="store_true", help="Save all the samples rather than just the summary statistics. Default is False.")
+argp.add_argument("-E", "--evidence", action="store_true", help="Determines whether or not to calculate the evidence for each submodel using thermodynamic integration. Default is False.")
 argp.add_argument("-rs", "--random-seed", type=int, help="Use this to set the random seed. Default=None.")
 argp.add_argument("--name", type=str, help="Use this as the stem for all file output. Default=None.")
 args = argp.parse_args()
@@ -52,11 +51,6 @@ params = args.params
 
 # see if we're using GW observations
 gwobs = True if args.model0=='gwobs' else False
-
-# construct dict that relates submodels to their index number
-submodels_dict = {}
-for idx, model in enumerate(model_names):
-    submodels_dict[idx] = model
 
 if VERBOSE:
     print("Formation channels: " + ", ".join(channels))
@@ -152,7 +146,7 @@ else:
 # Plot the KDEs and observations
 if MAKE_PLOTS==True:
     print("Plotting marginalized KDE models...\n")
-    msplot.plot_1D_kdemodels(kde_models, params, obsdata, model0, plot_obs=True, plot_obs_samples=False)
+    msplot.plot_1D_kdemodels(kde_models, params, obsdata, model0, name=args.name, plot_obs=True, plot_obs_samples=False)
 
 
 # --- Freeze sample evaluations in each model (This is time consuming, but only needs to be done once for each KDE model so we don't need to recompute p_model(data) over and over again when the observation values aren't going to change. Lower the number of samples per observation to speed this up.)
@@ -168,108 +162,23 @@ if VERBOSE:
 
 
 
+# --- Do the sampling!
 
+sampler = sample.Sampler(model_names, channels)
+sampler.sample(kde_models, obsdata)
+samples = sampler.samples
+lnprb = sampler.lnprb
 
-# --- Define the likelihood and prior
-
-def lnp(x):
-    """
-    Log of the prior. Returns logL of -inf for points outside, uniform within. Is conditional on the sum of the betas being one.
-    """
-    model = x[0]
-    betas_tmp = np.asarray(x[1:])
-    betas_tmp = np.append(betas_tmp, 1-np.sum(betas_tmp))
-
-    if np.floor(model) not in range(0, len(model_names)):
-        return -np.inf
-
-    if np.any(betas_tmp < 0.0):
-        return -np.inf
-
-    if np.sum(betas_tmp) > 1.0:
-        return -np.inf
-
-    # Dirchlet distribution prior for betas
-    return scipy.stats.dirichlet.logpdf(betas_tmp, _concentration)
-
-def lnlike(x, data):
-    """
-    Log of the likelihood. Selects on model, then tests beta.
-    """
-    model_idx = int(np.floor(x[0]))
-    model = submodels_dict[model_idx]
-    betas_tmp = np.asarray(x[1:])
-    betas_tmp = np.append(betas_tmp, 1-np.sum(betas_tmp))
-
-    # Prior
-    lp = lnp(x)
-    if not np.isfinite(lp):
-        return lp
-
-    # Likelihood
-    prob = np.zeros(data.shape[0])
-
-    # Iterate over channels in this submodel, return cached values
-    for channel, beta in zip(channels, betas_tmp):
-        smdl = kde_models[model][channel]
-        prob += beta * smdl(data)
-
-    return np.log(prob).sum() + lp
-
-
-
-
-# --- Run the sampler!
-
-# Set up walkers (note that ndim is (Nchannels-1) + 1 for the model index)
-ndim = (len(channels)-1) + 1
-nwalkers = 16
-ntemps = 4
-nsteps = 5000
-
-# Set up initial point for the walkers
-p0PT = np.empty(shape=(ntemps, nwalkers, ndim))
-# branching fraction
-_concentration = np.ones(len(channels))
-p0PT[:,:,:] = scipy.stats.dirichlet.rvs(_concentration, (p0PT.shape[0], p0PT.shape[1]))
-# model index (note that we overwrite one of the betas with the model index; we only use Nchannel-1 betas in the inference because of the implicit constraint that Sum(betas) = 1)
-p0PT[:,:,0] = np.random.uniform(0, len(kde_models), size=(ntemps, nwalkers))
-
-# Do the actual sampling
-if VERBOSE:
-    print("Sampling...")
-sampler = PTSampler(ntemps, nwalkers, ndim, lnlike, lnp, loglargs=[obsdata])
-for idx, result in enumerate(sampler.sample(p0PT, iterations=nsteps)):
-    if VERBOSE:
-        if (idx+1) % 50 == 0:
-            sys.stderr.write("\r  {0}% (N={1})".format(float(idx+1)*100. / nsteps, idx+1))
-if VERBOSE:
-    print("\nSampling complete!\n")
-
-
-
-# --- Process the chains
-
-# specify number of steps for burnin
-burnin = 1000
-nsamps_after_burning = (nsteps-burnin)
-samples = sampler.chain[:,:,burnin:,:]
-lnprb = sampler.lnprobability[:,:,burnin:]
-
-# synthesize last betas, since they sum to unity
-last_betas = (1.0-np.sum(samples[...,1:], axis=3))
-last_betas = np.expand_dims(last_betas, axis=3)
-samples = np.concatenate((samples, last_betas), axis=3)
 
 # Plot samples and histograms of betas per model
 if MAKE_PLOTS==True:
     print("Plotting samples...\n")
-    msplot.plot_samples(samples, model_names, channels, model0)
+    msplot.plot_samples(samples, model_names, channels, model0, name=args.name)
 
 
 # reshape to have all steps from all walkers in a single dimension (note that we added a dim for the last beta that we synthesized)
-samples = samples.reshape((ntemps, nwalkers * nsamps_after_burning, ndim+1))
-lnprb = lnprb.reshape((ntemps, nwalkers * nsamps_after_burning))
+samples = samples.reshape((sampler.ntemps, sampler.nwalkers * sampler.Nsteps_final, sampler.ndim+1))
+lnprb = lnprb.reshape((sampler.ntemps, sampler.nwalkers * sampler.Nsteps_final))
 
 # Parse out the model index in low-T chain
 smdl_counts = np.floor(samples[0,:,0]).astype(int)
@@ -286,6 +195,22 @@ if VERBOSE:
             beta = np.nan
         print("  Model {0:s} ({1:d}): {2:d} samples, beta={3:0.2f}".format(smdl, smdl_idx, counts, beta))
     print("")
+
+
+# --- Calculate the evidence, if specified
+if args.evidence:
+    if VERBOSE:
+        print("Calculating evidence for each submodel...")
+    smdl_samplers={}
+    for smdl in model_names:
+        if VERBOSE:
+            print("Model {0:s}:".format(smdl))
+        evidence_sampler = sample.Sampler(model_names, channels, smdl=smdl)
+        evidence_sampler.sample(kde_models, obsdata)
+        smdl_samplers[smdl] = evidence_sampler
+        if VERBOSE:
+            print("  {0:s} log evidence: {1:0.3f}\n".format(smdl,evidence_sampler.lnZ))
+
 
 
 
