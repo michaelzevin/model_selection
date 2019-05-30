@@ -180,18 +180,6 @@ def sample_extrinsic(hpf, hxf, det):
     return np.sqrt(p**2 + x**2)
 
 
-# Spin vector
-def spin_vector(a, phi):
-    """
-    Generates a random spin vector using spin magnitude and tilt.
-    """
-    theta = np.random.uniform(0, 2*np.pi, size=len(a))
-    ax = a*np.sin(theta)*np.cos(phi)
-    ay = a*np.sin(theta)*np.sin(phi)
-    az = a*np.cos(theta)
-    return ax, ay, az
-
-
 # Comoving volume
 def Vc(z):
     """
@@ -202,10 +190,17 @@ def Vc(z):
 
 
 # Detection probability function
-def detection_probability(m1, m2, z=None, s1=None, s2=None, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_max=2.0, Ntrials=1000, **kwargs):
+def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_max=2.0, Ntrials=1000, **kwargs):
     """
     Calls other functions in this file to calculate a detection probability
     """
+    # parse system (done this way for multiprocessing purposes)
+    m1 = system[0]
+    m2 = system[1]
+    z = system[2]
+    s1 = system[3]
+    s2 = system[4]
+
     # read f_low, df or assume 10 Hz if not in kwargs
     f_low = kwargs["f_low"] if "f_low" in kwargs else 10.
     f_high = kwargs["f_high"] if "f_high" in kwargs else 2048.
@@ -237,7 +232,7 @@ def detection_probability(m1, m2, z=None, s1=None, s2=None, ifos={"H1":"midhighl
         rho_opts[ifo] = snr(hpf_opt, hxf_opt, freqs, psds[ifo], f_low=f_low, df=df)
 
     # if the combined SNR is less than the detection threshold, give weight of 0
-    if np.sqrt(np.sum(np.square(rho_opts.values()))) < float(rho_det):
+    if np.sqrt(np.sum(np.square(list(rho_opts.values())))) < float(rho_det):
         weight = 0.0
 
     else:
@@ -252,7 +247,7 @@ def detection_probability(m1, m2, z=None, s1=None, s2=None, ifos={"H1":"midhighl
         passed = sum(1 for i in snrs if i>=float(rho_det))
         weight = float(passed) / len(snrs)
 
-    return weight
+    return weight, z
 
 
 
