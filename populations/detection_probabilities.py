@@ -56,7 +56,7 @@ argp.add_argument("-c", "--channel", type=str, required=True, help="Name of the 
 argp.add_argument("-n", "--Ntrials", type=int, default=1000, help="Define the number of monte carlo trails used for calculating the average SNR. Default=1000")
 argp.add_argument("-s", "--snr-min", type=float, default=8, help="Define the SNR threshold for detectability. Default=8")
 argp.add_argument("-mp", "--multiproc", type=int, default=1, help="Number of cores you want to use. Default=1")
-argp.add_argument("-zm", "--z-max", type=str, default=2.0, help="Maximum redshift value for sampling. Default=2.0")
+argp.add_argument("-zm", "--z-max", type=str, default=3.0, help="Maximum redshift value for sampling. Default=3.0")
 args = argp.parse_args()
 
 
@@ -65,9 +65,27 @@ args = argp.parse_args()
 print("Calculating weights for model: {0:s}, channel: {1:s}".format(args.model, args.channel))
 pop = pd.read_hdf(_dirpath+args.model+'.hdf', key=args.channel)
 
-# if redshifts are not provided, temporarily put Nones there
+# --- if redshifts are not provided, distribute these uniform in comoving volume
 if 'z' not in pop.keys():
-    pop['z'] = None
+    print("  Redshifts not provided, distributing uniformly in comoving volume...")
+    Vc_max = selection_effects.Vc(args.z_max)
+    randVc = np.random.uniform(0,Vc_max.value, len(pop)) * u.Mpc**3
+    randDc = (3./(4*np.pi)*randVc)**(1./3)
+
+    func = partial(selection_effects.z_from_Dc, cosmo=cosmo)
+
+    if args.multiproc > 1:
+        mp = int(args.multiproc)
+        pool = multiprocessing.Pool(mp)
+        results = pool.map(func, randDc)
+        pool.close()
+        pool.join()
+    else:
+        results = []
+        for Dc in randDc:
+            results.append(func(Dc))
+
+    pop['z'] = results
 
 
 # --- cosmological weights
@@ -97,7 +115,7 @@ for ifos, name in zip(_configs,_names):
     systems_info = []
 
     # set up partial function for multiprocessing
-    func = partial(selection_effects.detection_probability, ifos=ifos, rho_det=args.snr_min, z_max=args.z_max, Ntrials=args.Ntrials, psd_path=_psd_path)
+    func = partial(selection_effects.detection_probability, ifos=ifos, rho_det=args.snr_min, Ntrials=args.Ntrials, psd_path=_psd_path)
 
     # set up systems for multiprocessing
     for idx, system in pop.iterrows():
@@ -114,12 +132,7 @@ for ifos, name in zip(_configs,_names):
         for system in systems_info:
             results.append(func(system))
 
-    results = np.transpose(results)
-    weight = results[0]
-    z = results[1]
-
-    pop[name] = weight
-    pop['z'] = z
+    pop[name] = results
 
 # save pop model
 pop.to_hdf(_outdir+args.model+'.hdf', key=args.channel)

@@ -189,6 +189,15 @@ def Vc(z):
     return 4./3*np.pi*Dl**3 / (1+z)**3
 
 
+# Uniform in comoving volume
+def z_from_Dc(Dc, cosmo):
+    """
+    Calculates the redshift from a comoving distance
+    """
+    z = z_at_value(cosmo.comoving_distance, Dc)
+    return z
+
+
 # Cosmological weight
 def cosmo_weighting(z):
     """
@@ -203,7 +212,7 @@ def cosmo_weighting(z):
 
 
 # Detection probability function
-def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_max=2.0, Ntrials=1000, **kwargs):
+def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, Ntrials=1000, **kwargs):
     """
     Calls other functions in this file to calculate a detection probability
     """
@@ -219,13 +228,6 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_m
     f_high = kwargs["f_high"] if "f_high" in kwargs else 2048.
     df = kwargs["df"] if "df" in kwargs else 1./32
     psd_path = kwargs["psd_path"] if "psd_path" in kwargs else None
-
-    # if redshift not provided, calculate it uniform in comoving volume
-    if not z:
-        Vc_max = Vc(z_max).value
-        randVc = np.random.uniform(0,Vc_max) * u.Mpc**3
-        randDc = (3./(4*np.pi)*randVc)**(1./3)
-        z = z_at_value(cosmo.comoving_distance, randDc)
 
     # get the detectors of choice for the response function
     detectors = {}
@@ -260,7 +262,7 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_m
         passed = sum(1 for i in snrs if i>=float(rho_det))
         weight = float(passed) / len(snrs)
 
-    return weight, z
+    return weight
 
 
 
