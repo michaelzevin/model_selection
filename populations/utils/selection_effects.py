@@ -189,6 +189,19 @@ def Vc(z):
     return 4./3*np.pi*Dl**3 / (1+z)**3
 
 
+# Cosmological weight
+def cosmo_weighting(z):
+    """
+    Calculates the relative cosmological weight for a sample:
+    dVc/dz / (1+z)
+    where dVc/dz is the differential comoving volume at z
+    and 1/(1+z) is the time dilation factor
+    """
+    dVc_dz = cosmo.differential_comoving_volume(z)
+    dts_dt0 = 1./(1.+z)
+    return dVc_dz.value*dts_dt0
+
+
 # Detection probability function
 def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_max=2.0, Ntrials=1000, **kwargs):
     """

@@ -69,9 +69,29 @@ pop = pd.read_hdf(_dirpath+args.model+'.hdf', key=args.channel)
 if 'z' not in pop.keys():
     pop['z'] = None
 
-# --- loop over ifo configurations and sensitivities for calculating different pdet
+
+# --- cosmological weights
+print("  Calculating cosmological weights...")
+if args.multiproc > 1:
+    mp = int(args.multiproc)
+    pool = multiprocessing.Pool(mp)
+    results = pool.map(selection_effects.cosmo_weighting, np.asarray(pop['z']))
+    pool.close()
+    pool.join()
+else:
+    results = []
+    for z in np.asarray(pop['z']):
+        results.append(selection_effects.cosmo_weighting(z))
+
+pop['cosmo_weight'] = results
+
+
+
+# --- detector weights
+# loop over ifo configurations and sensitivities for calculating different pdet
+print("  Calculating detector weights...")
 for ifos, name in zip(_configs,_names):
-    print("  configuration {0:s}...".format(name))
+    print("    configuration {0:s}...".format(name))
 
     # set up partial functions and organize data for multiprocessing
     systems_info = []
