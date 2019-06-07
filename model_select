@@ -142,7 +142,6 @@ else:
             obsdata = np.concatenate((obsdata, model0[channel].generate_observations(Nobs_per_channel, args.Nsamps, args.smear)))
 
 
-
 # Plot the KDEs and observations
 if MAKE_PLOTS==True:
     print("Plotting marginalized KDE models...\n")

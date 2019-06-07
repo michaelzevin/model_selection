@@ -13,12 +13,13 @@ from scipy.stats import truncnorm
 from sklearn.neighbors import KernelDensity
 from statsmodels.nonparametric.kde import KDEUnivariate
 from statsmodels.nonparametric.kernel_density import KDEMultivariate
+import kalepy as kale
 
 # Need to ensure all parameters are normalized over the same range
-_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1)}
+_param_bounds = {"mchirp": [0,100], "q": [0,1], "chieff": [-1,1]}
 _smear_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043}
 
-_kde_method = 'scikit'
+_kde_method = 'kalepy'
 
 """
 Set of classes used to construct statistical models of populations.
@@ -67,6 +68,10 @@ class KDEModel(Model):
         self._smear_sigmas = [_smear_sigmas[param] for param in samples.columns]
         samples = normalize_samples(np.asarray(samples), self._param_bounds)
 
+        # add a little bit of scatter to samples that have the exact same values, as this will freak out the KDE generator
+        if len(np.unique(samples))==1:
+            samples += np.random.normal(loc=0.0, scale=1e-4, size=samples.shape)
+
         # also need to scale pdf by parameter range, so save this
         pdf_scale = scale_to_unity(self._param_bounds)
 
@@ -89,6 +94,12 @@ class KDEModel(Model):
             self._logpdf = lambda x: np.log(_kde.pdf(normalize_samples(x, self._param_bounds))) - np.log(pdf_scale)
             self._pdf = lambda x: _kde.pdf(normalize_samples(x, self._param_bounds))/pdf_scale
 
+        elif kde_method=='kalepy':
+            # this is Luke Kelley's KDE generator that supports weighting and boundaries
+            # takes in data in shape (D,N)
+            _kde = kale.KDE(samples.T, weights=weights, kernel='parabola')
+            self._logpdf = lambda x: np.log(_kde.pdf(normalize_samples(x, self._param_bounds).T, reflect=[0.0,1.0])) - np.log(pdf_scale)
+            self._pdf = lambda x: _kde.pdf(normalize_samples(x, self._param_bounds).T, reflect=[0.0,1.0])/pdf_scale
 
         self._kde = _kde
 
@@ -113,6 +124,9 @@ class KDEModel(Model):
 
         elif kde_method=='statsmodels':
             raise NameError("Sampling for statsmodels not implemented yet...")
+
+        elif kde_method=='kalepy':
+            samps_norm = np.atleast_2d(self._kde.resample(N, reflect=[0.0,1.0])).T
 
         samps =  denormalize_samples(samps_norm, self._param_bounds)
         return samps
