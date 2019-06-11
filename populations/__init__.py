@@ -9,7 +9,7 @@ import numpy as np
 import scipy as sp
 import pandas as pd
 from scipy.stats import gaussian_kde
-from scipy.stats import truncnorm
+from scipy.stats import norm, truncnorm
 from sklearn.neighbors import KernelDensity
 from statsmodels.nonparametric.kde import KDEUnivariate
 from statsmodels.nonparametric.kernel_density import KDEMultivariate
@@ -77,7 +77,7 @@ class KDEModel(Model):
 
         # get the KDE objects, specify functions for pdf and logpdf
         if kde_method=='scipy':
-            _kde = gaussian_kde(samples.T, weights=weights, bw_method='scott')
+            _kde = gaussian_kde(samples.T, weights=weights, bw_method=0.01)
             self._logpdf = lambda x: _kde.logpdf(normalize_samples(x, self._param_bounds).T) - np.log(pdf_scale)
             self._pdf = lambda x: _kde.pdf(normalize_samples(x, self._param_bounds).T)/pdf_scale
 
@@ -98,8 +98,8 @@ class KDEModel(Model):
             # this is Luke Kelley's KDE generator that supports weighting and boundaries
             # takes in data in shape (D,N)
             _kde = kale.KDE(samples.T, weights=weights, kernel='parabola')
-            self._logpdf = lambda x: np.log(_kde.pdf(normalize_samples(x, self._param_bounds).T, reflect=[0.0,1.0])) - np.log(pdf_scale)
-            self._pdf = lambda x: _kde.pdf(normalize_samples(x, self._param_bounds).T, reflect=[0.0,1.0])/pdf_scale
+            self._logpdf = lambda x: np.log(_kde.pdf(normalize_samples(x, self._param_bounds).T, reflect=[0.0,1.0]*np.ones_like(self._param_bounds))) - np.log(pdf_scale)
+            self._pdf = lambda x: _kde.pdf(normalize_samples(x, self._param_bounds).T, reflect=[0.0,1.0]*np.ones_like(self._param_bounds))/pdf_scale
 
         self._kde = _kde
 
@@ -126,7 +126,7 @@ class KDEModel(Model):
             raise NameError("Sampling for statsmodels not implemented yet...")
 
         elif kde_method=='kalepy':
-            samps_norm = np.atleast_2d(self._kde.resample(N, reflect=[0.0,1.0])).T
+            samps_norm = np.atleast_2d(self._kde.resample(N, reflect=[0.0,1.0]*np.ones_like(self._param_bounds))).T
 
         samps =  denormalize_samples(samps_norm, self._param_bounds)
         return samps
@@ -209,8 +209,18 @@ class KDEModel(Model):
                     sigma = self._smear_sigmas[pidx]
                     low_lim = self._param_bounds[pidx][0]
                     high_lim = self._param_bounds[pidx][1]
-                    dist = truncnorm((low_lim-mu)/sigma, (high_lim-mu)/sigma, loc=mu, scale=sigma)
-                    obsdata[idx, :, pidx] = dist.rvs(Nsamps)
+
+                    # construnct gaussian and drawn samples
+                    dist = norm(loc=mu, scale=sigma)
+                    samps = dist.rvs(Nsamps)
+
+                    # reflect samples if drawn past the parameters bounds
+                    above_idxs = np.argwhere(samps>high_lim)
+                    samps[above_idxs] = high_lim - (samps[above_idxs]-high_lim)
+                    below_idxs = np.argwhere(samps<low_lim)
+                    samps[below_idxs] = low_lim + (low_lim - samps[below_idxs])
+
+                    obsdata[idx, :, pidx] = samps
 
             return obsdata
 
