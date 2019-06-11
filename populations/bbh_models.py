@@ -38,7 +38,7 @@ def get_models(dirpath, params, spin_distr=None, weighting=False, **kwargs):
     # --- Read in the models, parse the inference parameters
     if VERBOSE:
         print("\nReading models and applying transformations...\n")
-    model_files = [dirpath + f for f in os.listdir(dirpath)]
+    model_files = [os.path.join(dirpath, f) for f in os.listdir(dirpath)]
     channels = list(h5py.File(model_files[0]).keys())
 
     # all models should be saved as hdf files living at dirpath with the channels as keys
@@ -47,7 +47,7 @@ def get_models(dirpath, params, spin_distr=None, weighting=False, **kwargs):
         models[mdl_name] = {}
         for channel in channels:
             inference_params = pd.DataFrame()
-            df = pd.read_hdf(dirpath + mdl_file, key=channel)
+            df = pd.read_hdf(os.path.join(dirpath, mdl_file), key=channel)
 
             # check if params in the dataframe, otherwise perform transformations
             for param in params:

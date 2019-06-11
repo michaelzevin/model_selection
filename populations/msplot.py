@@ -73,7 +73,10 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=F
 
         # loop over all parameters...
         for pidx, param in enumerate(params):
-            ax = axs[idx,pidx]
+            if axs.ndim == 1:
+                ax = axs[idx]
+            else:
+                ax = axs[idx,pidx]
 
             pdf_max = 0
             # loop over all channels...
