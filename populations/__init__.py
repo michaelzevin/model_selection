@@ -69,8 +69,9 @@ class KDEModel(Model):
         samples = normalize_samples(np.asarray(samples), self._param_bounds)
 
         # add a little bit of scatter to samples that have the exact same values, as this will freak out the KDE generator
-        if len(np.unique(samples))==1:
-            samples += np.random.normal(loc=0.0, scale=1e-4, size=samples.shape)
+        for idx, param in enumerate(samples.T):
+            if len(np.unique(param))==1:
+                samples[:,idx] += np.random.normal(loc=0.0, scale=1e-5, size=samples.shape[0])
 
         # also need to scale pdf by parameter range, so save this
         pdf_scale = scale_to_unity(self._param_bounds)
