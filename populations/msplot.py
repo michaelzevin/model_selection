@@ -81,7 +81,7 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=F
             pdf_max = 0
             # loop over all channels...
             for cidx, channel in enumerate(kde_models[model]):
-                print(model, param, channel)
+                print('   '+model, param, channel)
                 kde = kde_models[model][channel]
 
                 # marginalize the kde

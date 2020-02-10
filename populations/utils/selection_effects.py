@@ -16,6 +16,8 @@ from astropy.cosmology import z_at_value
 import lal, lalsimulation
 from pycbc.detector import Detector
 
+from pdb import set_trace
+
 cosmo = cosmology.Planck15
 
 
@@ -98,7 +100,7 @@ def get_waveform(m1, m2, z, s1=None, s2=None, vary_params=False, **kwargs):
 
 
 # PSD call function
-def get_psd(psd, ifo, **kwargs):
+def get_psd(psd, ifo=None, **kwargs):
     """
     Gets the PSD from either observing scenarios table or lalsimulation
     """
@@ -180,6 +182,18 @@ def sample_extrinsic(hpf, hxf, det):
     return np.sqrt(p**2 + x**2)
 
 
+# Spin vector
+def spin_vector(a, phi):
+    """
+    Generates a random spin vector using spin magnitude and tilt.
+    """
+    theta = np.random.uniform(0, 2*np.pi, size=len(a))
+    ax = a*np.sin(theta)*np.cos(phi)
+    ay = a*np.sin(theta)*np.sin(phi)
+    az = a*np.cos(theta)
+    return ax, ay, az
+
+
 # Comoving volume
 def Vc(z):
     """
@@ -189,45 +203,23 @@ def Vc(z):
     return 4./3*np.pi*Dl**3 / (1+z)**3
 
 
-# Uniform in comoving volume
-def z_from_Dc(Dc, cosmo):
-    """
-    Calculates the redshift from a comoving distance
-    """
-    z = z_at_value(cosmo.comoving_distance, Dc)
-    return z
-
-
-# Cosmological weight
-def cosmo_weighting(z):
-    """
-    Calculates the relative cosmological weight for a sample:
-    dVc/dz / (1+z)
-    where dVc/dz is the differential comoving volume at z
-    and 1/(1+z) is the time dilation factor
-    """
-    dVc_dz = cosmo.differential_comoving_volume(z)
-    dts_dt0 = 1./(1.+z)
-    return dVc_dz.value*dts_dt0
-
-
 # Detection probability function
-def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, Ntrials=1000, **kwargs):
+def detection_probability(m1, m2, z=None, s1=None, s2=None, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_max=2.0, Ntrials=1000, **kwargs):
     """
     Calls other functions in this file to calculate a detection probability
     """
-    # parse system (done this way for multiprocessing purposes)
-    m1 = system[0]
-    m2 = system[1]
-    z = system[2]
-    s1 = system[3]
-    s2 = system[4]
-
     # read f_low, df or assume 10 Hz if not in kwargs
     f_low = kwargs["f_low"] if "f_low" in kwargs else 10.
     f_high = kwargs["f_high"] if "f_high" in kwargs else 2048.
     df = kwargs["df"] if "df" in kwargs else 1./32
     psd_path = kwargs["psd_path"] if "psd_path" in kwargs else None
+
+    # if redshift not provided, calculate it uniform in comoving volume
+    if not z:
+        Vc_max = Vc(z_max).value
+        randVc = np.random.uniform(0,Vc_max) * u.Mpc**3
+        randDc = (3./(4*np.pi)*randVc)**(1./3)
+        z = z_at_value(cosmo.comoving_distance, randDc)
 
     # get the detectors of choice for the response function
     detectors = {}
@@ -247,7 +239,7 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, Ntr
         rho_opts[ifo] = snr(hpf_opt, hxf_opt, freqs, psds[ifo], f_low=f_low, df=df)
 
     # if the combined SNR is less than the detection threshold, give weight of 0
-    if np.sqrt(np.sum(np.square(list(rho_opts.values())))) < float(rho_det):
+    if np.linalg.norm(list(rho_opts.values())) < float(rho_det):
         weight = 0.0
 
     else:

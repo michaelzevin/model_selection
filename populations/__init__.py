@@ -19,7 +19,7 @@ import kalepy as kale
 _param_bounds = {"mchirp": [0,100], "q": [0,1], "chieff": [-1,1]}
 _smear_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043}
 
-_kde_method = 'kalepy'
+_kde_method = 'scipy'
 
 """
 Set of classes used to construct statistical models of populations.

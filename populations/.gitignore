@@ -1,0 +1,4 @@
+# ignore the following file types
+
+*.pyc
+*.DS_Store
