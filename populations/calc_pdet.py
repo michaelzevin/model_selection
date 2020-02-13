@@ -97,7 +97,7 @@ for ifos, name in zip(_configs,_names):
     else:
         results = []
         for system in tqdm(systems_info):
-            results.append(func(system[0],system[1],system[2],system[3],system[4]))
+            results.append(func(system))
 
     pop[name] = results
 

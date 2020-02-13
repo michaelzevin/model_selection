@@ -204,10 +204,17 @@ def Vc(z):
 
 
 # Detection probability function
-def detection_probability(m1, m2, z, s1, s2, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_max=3.0, Ntrials=1000, **kwargs):
+def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_max=3.0, Ntrials=1000, **kwargs):
     """
     Calls other functions in this file to calculate a detection probability
     """
+    # get system parameters
+    m1 = system[0]
+    m2 = system[1]
+    z = system[2]
+    s1 = system[3]
+    s2 = system[4]
+
     # read f_low, df or assume 10 Hz if not in kwargs
     f_low = kwargs["f_low"] if "f_low" in kwargs else 10.
     f_high = kwargs["f_high"] if "f_high" in kwargs else 2048.
