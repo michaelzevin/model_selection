@@ -36,7 +36,7 @@ cosmo = cosmology.Planck15
 
 ### Specify input and output directories
 _dirpath = '/Users/michaelzevin/research/model_selection/spins/data/unweighted/spin_models/'
-_outdir = 'Users/michaelzevin/research/model_selection/spins/data/detection_weighted/spin_models/'
+_outdir = '/Users/michaelzevin/research/model_selection/spins/data/detection_weighted/spin_models/'
 
 
 ### Specify PSD information
@@ -91,9 +91,11 @@ for ifos, name in zip(_configs,_names):
 
 
     if args.multiproc > 1:
+        results = []
         mp = int(args.multiproc)
         pool = multiprocessing.Pool(mp)
-        results = pool.map(func, systems_info)
+        results = pool.imap(func, systems_info)
+        results = np.asarray(list(results))
         pool.close()
         pool.join()
     else:

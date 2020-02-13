@@ -203,10 +203,27 @@ def Vc(z):
     return 4./3*np.pi*Dl**3 / (1+z)**3
 
 
+# Generate redshifts uniform in comoving volume
+def gen_redshifts_unicomvol(n=1, z_max=3):
+    """
+    Generates n redshifts uniformly in comoving volume, up to a z_max
+    """
+    zs =  []
+    for i in np.arange(n):
+        Vc_max = Vc(z_max).value
+        randVc = np.random.uniform(0,Vc_max) * u.Mpc**3
+        randDc = (3./(4*np.pi)*randVc)**(1./3)
+        zs.append(z_at_value(cosmo.comoving_distance, randDc))
+    return np.asarray(zs)
+    
+
+
 # Detection probability function
-def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_max=3.0, Ntrials=1000, **kwargs):
+def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, Ntrials=1000, **kwargs):
     """
     Calls other functions in this file to calculate a detection probability
+    For multiprocessing purposes, takes in array 'system' of form:
+    [m1, m2, z, (s1x,s1y,s1z), (s2x,s2y,s2z)]
     """
     # get system parameters
     m1 = system[0]
@@ -220,13 +237,6 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_m
     f_high = kwargs["f_high"] if "f_high" in kwargs else 2048.
     df = kwargs["df"] if "df" in kwargs else 1./32
     psd_path = kwargs["psd_path"] if "psd_path" in kwargs else None
-
-    # if redshift not provided, calculate it uniform in comoving volume
-    if z is not None:
-        Vc_max = Vc(z_max).value
-        randVc = np.random.uniform(0,Vc_max) * u.Mpc**3
-        randDc = (3./(4*np.pi)*randVc)**(1./3)
-        z = z_at_value(cosmo.comoving_distance, randDc)
 
     # get the detectors of choice for the response function
     detectors = {}
