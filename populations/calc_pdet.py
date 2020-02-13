@@ -36,7 +36,7 @@ cosmo = cosmology.Planck15
 
 ### Specify input and output directories
 _dirpath = '/Users/michaelzevin/research/model_selection/spins/data/unweighted/spin_models/'
-_outdir = 'Users/michaelzevin/research/model_selection/spins/data/detection_weighted/spin_omdels/'
+_outdir = 'Users/michaelzevin/research/model_selection/spins/data/detection_weighted/spin_models/'
 
 
 ### Specify PSD information
@@ -55,6 +55,8 @@ ifos_design_network = {"H1":"design",
 
 _configs = [ifos_O3_single,ifos_O3_network,ifos_design_single,ifos_design_network]
 _names = ['pdet_O3','pdet_O3network','pdet_design','pdet_designnetwork']
+_configs = [ifos_O3_network]
+_names = ['pdet_O3network']
 
 
 ### Argument handling
