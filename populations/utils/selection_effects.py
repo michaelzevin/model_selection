@@ -204,7 +204,7 @@ def Vc(z):
 
 
 # Detection probability function
-def detection_probability(m1, m2, z=None, s1=None, s2=None, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_max=2.0, Ntrials=1000, **kwargs):
+def detection_probability(m1, m2, z, s1, s2, ifos={"H1":"midhighlatelow"}, rho_det=8.0, z_max=3.0, Ntrials=1000, **kwargs):
     """
     Calls other functions in this file to calculate a detection probability
     """
@@ -215,7 +215,7 @@ def detection_probability(m1, m2, z=None, s1=None, s2=None, ifos={"H1":"midhighl
     psd_path = kwargs["psd_path"] if "psd_path" in kwargs else None
 
     # if redshift not provided, calculate it uniform in comoving volume
-    if not z:
+    if z is not None:
         Vc_max = Vc(z_max).value
         randVc = np.random.uniform(0,Vc_max) * u.Mpc**3
         randDc = (3./(4*np.pi)*randVc)**(1./3)
