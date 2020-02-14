@@ -3,15 +3,12 @@ import numpy as np
 import pandas as pd
 import h5py
 
-import pdb
-
 from . import *
-from .utils.transform import _DEFAULT_TRANSFORMS, _to_chi_eff, _uniform_spinmag, _isotropic_spinmag
+from .utils.transform import _DEFAULT_TRANSFORMS, _to_chieff, \
+_uniform_spinmag, _isotropic_spinmag
 
 
 VERBOSE=True
-
-_Nsamps=1e4
 
 
 _VALID_SPIN_DISTR = {
@@ -26,22 +23,28 @@ _VALID_SPIN_DISTR = {
 models = {}
 kde_models = {}
 
-def get_models(dirpath, params, spin_distr=None, weighting=False, **kwargs):
+def get_models(dirpath, params, spin_distr=None, weighting=None, **kwargs):
     """
-    Call this to get all the models and submodels living in dir, as well as KDEs of these models, packed inside of dictionaries labelled in the dict structure models[model][channel].
+    Call this to get all the models and submodels living in :dirpath:, as well 
+    as KDEs of these models, packed inside of dictionaries labelled in the 
+    dict structure models[model][channel]. Will first look for :params: as 
+    series in the dataframe. If they are not present, it will try to construct 
+    these parameters if the valid transformations are present in transforms.py.
 
-    Will first look for these parameters as series in the dataframe. If they are not present, it will try to construct these parameters if the valid transformations are present in transforms.py.
-
-    If chieff is one of the params for inference and spin magnitudes are not provided, this function will first check if spin_distr is provided and if so, will generate spin magnitudes and calculate chieff using these spins and the m1/m2 specified in the dataframes.
+    If chieff is one of the :params: for inference and spin magnitudes are not 
+    provided, this function will first check if :spin_distr: is provided and 
+    if so, will generate spin magnitudes and calculate chieff using these 
+    spins and the m1/m2 specified in the dataframes.
     """
 
     # --- Read in the models, parse the inference parameters
     if VERBOSE:
         print("\nReading models and applying transformations...\n")
     model_files = [os.path.join(dirpath, f) for f in os.listdir(dirpath)]
-    channels = list(h5py.File(model_files[0]).keys())
+    channels = list(h5py.File(model_files[0], "r").keys())
 
-    # all models should be saved as hdf files living at dirpath with the channels as keys
+    # all models should be saved as hdf files living at :dirpath: with the 
+    # channels as keys
     for mdl_file in os.listdir(dirpath):
         mdl_name = mdl_file.split('.')[0]
         models[mdl_name] = {}
@@ -49,7 +52,7 @@ def get_models(dirpath, params, spin_distr=None, weighting=False, **kwargs):
             inference_params = pd.DataFrame()
             df = pd.read_hdf(os.path.join(dirpath, mdl_file), key=channel)
 
-            # check if params in the dataframe, otherwise perform transformations
+            # check if :params: in the dataframe, otherwise perform transformations
             for param in params:
                 if param not in df.columns:
                     # default transformations
@@ -64,12 +67,16 @@ def get_models(dirpath, params, spin_distr=None, weighting=False, **kwargs):
                             if spin_distr in _VALID_SPIN_DISTR:
                                 df['a1'],df['a2'] = _VALID_SPIN_DISTR[spin_distr](df)
                             else:
-                                raise NameError("Spin magnitudes not provided and valid spin distribution was not specified, so can't generate effective spins!")
+                                raise NameError("Spin magnitudes not provided \
+and valid spin distribution was not specified, \
+so can't generate effective spins!")
 
                         df['chieff'] = _to_chi_eff(df)
                     # otherwise, raise an error
                     else:
-                        raise NameError("You specified the parameter {0:s} for inference, but it is not in your population data and you haven't written a transformation to calculate it!".format(param))
+                        raise NameError("You specified the parameter {0:s} \
+for inference, but it is not in your population data and you haven't written \
+a transformation to calculate it!".format(param))
 
             # store model in models dict
             models[mdl_name][channel] = df
@@ -84,7 +91,8 @@ def get_models(dirpath, params, spin_distr=None, weighting=False, **kwargs):
             df = models[mdl_name][channel]
 
             label = mdl_name + '_' + channel
-            mdl = KDEModel.from_samples(label, df, params, weighting=weighting, Nsamps=_Nsamps)
+            mdl = KDEModel.from_samples(label, df, params, \
+                                weighting=weighting)
             kde_models[mdl_name][channel] = mdl
 
     return models, kde_models

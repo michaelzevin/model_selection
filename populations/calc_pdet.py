@@ -55,8 +55,8 @@ ifos_design_network = {"H1":"design",
 
 _configs = [ifos_O3_single,ifos_O3_network,ifos_design_single,ifos_design_network]
 _names = ['pdet_O3','pdet_O3network','pdet_design','pdet_designnetwork']
-_configs = [ifos_O3_network]
-_names = ['pdet_O3network']
+_configs = [ifos_design_network]
+_names = ['pdet_designnetwork']
 
 
 ### Argument handling

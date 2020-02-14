@@ -13,28 +13,54 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 
-from populations import bbh_models
-from populations import msplot
-from populations import sample
+from populations import bbh_models, sample, gw_obs, msplot
 
 VERBOSE=True
-MAKE_PLOTS=True
+MAKE_PLOTS=False
 
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
-argp.add_argument("-d", "--dirpath", type=str, required=True, help="Sets the directory path where the models are living. Models must be stored as an hdf file with different keys storing the information about different models. The name of the hdf file is the name of the population (e.g. 'field.hdf' and 'cluster.hdf'.")
-argp.add_argument("-m", "--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. If 'gwobs', will use the actual GW observations.")
-argp.add_argument("-gw", "--gwpath", type=str, help="Sets the path for where the GW samples are living. Default=None.")
-argp.add_argument("-b", "--beta", nargs="*", help="Chooses the branching fraction. The number provided is the fraction of systems that come from each channel in alphabetical order. Must be set if gwobs not used. Can provide Nchannel values (which must sum to unity) or Nchannel-1 values (which must be less than 1.0, and the last branching fraction is inferred). Default=None.")
-argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations to be taken from the model. Must be set if gwobs not used. Default=None.")
-argp.add_argument("-N", "--Nsamps", type=int, default=100, help="Number of samples to be drawn from the posterior distributions and used to construct the KDE models. Default=100.")
-argp.add_argument("-s", "--smear", type=str, help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posterior'), or from a mock gaussian ('gaussian'). For mock observations, you can currently choose 'gaussian' to smear according to the average spread in parameters from current GW observations. Default=None.")
-argp.add_argument("-p", "--params", nargs="+", default="mchirp", help="Specifies the parameters you wish to use in the inference. Default=mchirp.")
-argp.add_argument("-sm", "--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the sping magnitude is not specified. Default is None.")
-argp.add_argument("-S", "--save-samples", action="store_true", help="Save all the samples rather than just the summary statistics. Default is False.")
-argp.add_argument("-E", "--evidence", action="store_true", help="Determines whether or not to calculate the evidence for each submodel using thermodynamic integration. Default is False.")
-argp.add_argument("-rs", "--random-seed", type=int, help="Use this to set the random seed. Default=None.")
-argp.add_argument("--name", type=str, help="Use this as the stem for all file output. Default=None.")
+argp.add_argument("-d", "--dirpath", type=str, required=True, help="Sets the \
+directory path where the models are living. Models must be stored as an hdf \
+file with different keys storing the information about different channels. \
+The name of the hdf file is the name of the population (e.g. 'chi01.hdf'.")
+argp.add_argument("-m", "--model0", type=str, required=True, help="Sets the \
+'true' model from which mock observations are drawn. If 'gwobs', will use \
+the actual GW observations.")
+argp.add_argument("-gw", "--gwpath", type=str, help="Sets the path for where \
+the GW samples are living. Default=None.")
+argp.add_argument("-b", "--beta", nargs="*", help="Chooses the branching \
+fraction. The number provided is the fraction of systems that come from each \
+channel in alphabetical order. Must be set if gwobs not used. Can provide \
+Nchannel values (which must sum to unity) or Nchannel-1 values (which must be \
+less than 1.0, and the last branching fraction is inferred). Default=None.")
+argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations \
+to be taken from the model. Must be set if gwobs not used. Default=None.")
+argp.add_argument("-N", "--Nsamps", type=int, default=100, help="Number of \
+samples to be drawn from the posterior distributions and used to construct \
+the KDE models. Default=100.")
+argp.add_argument("-w", "--weights", type=str, help="Name of column in \
+dataframe of detection probabilities. Default=None.")
+argp.add_argument("-s", "--smear", type=str, help="Smear out observations in \
+a mocked up attempt at non-delta function observation posteriors. For GW obs, \
+you can choose to smear using the actual posterior samples ('posterior'), or \
+from a mock gaussian ('gaussian'). For mock observations, you can currently \
+choose 'gaussian' to smear according to the average spread in parameters \
+from current GW observations. Default=None.")
+argp.add_argument("-p", "--params", nargs="+", default="mchirp", help=\
+"Specifies the parameters you wish to use in the inference. Default=mchirp.")
+argp.add_argument("-sm", "--spinmag", type=str, help="Define the spin \
+magnitude distribution you wish to use. Required for using spin parameters in \
+populations where the spin magnitude is not specified. Default is None.")
+argp.add_argument("-S", "--save-samples", action="store_true", help="Save all \
+the samples rather than just the summary statistics. Default is False.")
+argp.add_argument("-E", "--evidence", action="store_true", help="Determines \
+whether or not to calculate the evidence for each submodel using \
+thermodynamic integration. Default is False.")
+argp.add_argument("-rs", "--random-seed", type=int, help="Use this to set the \
+random seed. Default=None.")
+argp.add_argument("--name", type=str, help="Use this as the stem for all file \
+output. Default=None.")
 args = argp.parse_args()
 
 # --- Set random seed
@@ -42,7 +68,8 @@ if args.random_seed:
     np.random.seed(args.random_seed)
 
 # --- Load in models/kdemodels into dict structure: models[model][channel]
-models, kde_models = bbh_models.get_models(args.dirpath, args.params, args.spinmag, weighting=True)
+models, kde_models = bbh_models.get_models(args.dirpath, args.params, \
+                        args.spinmag, weighting=args.weights)
 model_names = list(models.keys())
 model_names.sort()
 channels = list(models[list(models.keys())[0]].keys())
@@ -65,41 +92,51 @@ if VERBOSE:
 # check to see if the models have the same formation channels
 for model in model_names:
     if set(models[model].keys()) != set(channels):
-        raise ValueError("Different models have differing formation channels! Check your hdf keys...")
+        raise ValueError("Different models have differing formation channels! \
+Check your hdf keys...")
 
 # check that a value of beta is provided if gwobs not specified
 if not gwobs:
     if not args.beta:
-        raise ValueError("You need to either specify branching fractions or choose to instead use GW observations!")
+        raise ValueError("You need to either specify branching fractions or \
+choose to instead use GW observations!")
 
-# check that the true model provided is valid is gwobs not specified
+# check that the true model provided is valid if gwobs not specified
 if (args.model0 not in model_names and not gwobs):
-    raise ValueError("The true model you specified ({0:s}) is not one of the models in {1:s} directory!".format(args.model0, args.dirpath))
+    raise ValueError("The true model you specified ({0:s}) is not one of the \
+models in {1:s} directory!".format(args.model0, args.dirpath))
 
 # check that Nobs was specified if not using gwobs
 if not gwobs and not args.Nobs:
-    raise ValueError("You need to specify and number of observations to be drawn from the 'true' model if not using GW observations!")
+    raise ValueError("You need to specify and number of observations to be \
+drawn from the 'true' model if not using GW observations!")
 
 # parse the branching ratio values and check for errors
 if not gwobs:
     betas = [float(x) for x in args.beta]
     if (len(betas) != len(channels)) and (len(betas) != len(channels)-1):
-        raise ValueError("Must specify {0:d} or {1:d} branching fractions, you provided {2:d}!".format(len(channels)-1, len(channels), len(betas)))
+        raise ValueError("Must specify {0:d} or {1:d} branching fractions, \
+you provided {2:d}!".format(len(channels)-1, len(channels), len(betas)))
     if np.sum(betas) > 1.0:
-        raise ValueError("Branching fractions must sum to less than or equal to 1.0, yours sum to {0:0.2f}!".format(np.sum(betas)))
+        raise ValueError("Branching fractions must sum to less than or equal \
+to 1.0, yours sum to {0:0.2f}!".format(np.sum(betas)))
     if (len(betas) == len(channels)) and (np.sum(betas) != 1.0):
-        raise ValueError("If you provide the same number of branching fractions as channels, they must sum to exactly 1.0 (yours sum to {0:0.2f})!".format(np.sum(betas)))
+        raise ValueError("If you provide the same number of branching \
+fractions as channels, they must sum to exactly 1.0 (yours sum to \
+{0:0.2f})!".format(np.sum(betas)))
 
     if len(betas) != len(channels):
         betas.append(1.0 - np.sum(betas))
 
-# --- If model0 specified, save relative fractions for each KDE model and store model0
+# --- If model0 specified, save relative fractions for each KDE model, 
+# and store model0
 if not gwobs:
     if VERBOSE:
         print("Saving relative fractions and storing true model...\n")
 
     for model in model_names:
-        # since channels are sorted alphabetically, the first channel has branching fraction beta
+        # since channels are sorted alphabetically, the first channel has 
+        # branching fraction beta
         for idx, (channel, beta) in enumerate(zip(channels, betas)):
             kde_models[model][channel].rel_frac(beta)
             if (model == args.model0):
@@ -110,7 +147,9 @@ if not gwobs:
                         print("  model range:")
                     print("    {0:s} (beta={1:0.2f})".format(channel, beta))
                     for param in args.params:
-                        print("      {0:s}: {1:0.2f} - {2:0.2f}".format(param, models[args.model0][channel][param].min(), models[args.model0][channel][param].max()))
+                        print("      {0:s}: {1:0.2f} - {2:0.2f}".format(param,\
+                                models[args.model0][channel][param].min(),\
+                                models[args.model0][channel][param].max()))
                     if idx==len(betas)-1:
                         print("")
 
@@ -121,40 +160,52 @@ if VERBOSE:
 
 # Calls gw_obs.py if argument is passed
 if gwobs:
-    from populations import gw_obs
     model0=None
-    obsdata, events = gw_obs.generate_observations(params, args.gwpath, args.Nsamps, args.smear)
+    obsdata, events = gw_obs.generate_observations(params, args.gwpath, \
+                                            args.Nsamps, args.smear)
     if VERBOSE:
-        print("Using the following {0:d} GW observations for inference:".format(len(events)))
+        print("Using the following {0:d} GW observations for \
+inference:".format(len(events)))
         print(*events, sep=', ')
         print("")
 
 else:
     if VERBOSE:
-        print("Drawing {0:d} observations from the true model...\n".format(int(args.Nobs)))
+        print("Drawing {0:d} observations from the true \
+model...\n".format(int(args.Nobs)))
     for idx, channel in enumerate(model0):
-        # FIXME: the floors and ceilings here are a bit hacky but ensure that we have a total of Nobs samples drawn when Nobs*beta is not an integer
+        # The floors and ceilings here are a bit hacky but ensure that we have
+        # a total of Nobs samples drawn when Nobs*beta is not an integer
         if idx==0:
             Nobs_per_channel = int(np.floor(args.Nobs * model0[channel]._rel_frac))
-            obsdata = model0[channel].generate_observations(Nobs_per_channel, args.Nsamps, args.smear)
+            obsdata = model0[channel].generate_observations(Nobs_per_channel, \
+                                                args.Nsamps, args.smear)
         else:
             Nobs_per_channel = int(np.ceil(args.Nobs * model0[channel]._rel_frac))
-            obsdata = np.concatenate((obsdata, model0[channel].generate_observations(Nobs_per_channel, args.Nsamps, args.smear)))
+            obsdata = np.concatenate((obsdata, \
+                  model0[channel].generate_observations(Nobs_per_channel, \
+                                            args.Nsamps, args.smear)))
 
 
 # Plot the KDEs and observations
 if MAKE_PLOTS==True:
     print("Plotting marginalized KDE models...\n")
-    msplot.plot_1D_kdemodels(kde_models, params, obsdata, model0, name=args.name, plot_obs=True, plot_obs_samples=False)
+    msplot.plot_1D_kdemodels(kde_models, params, obsdata, model0, \
+                name=args.name, plot_obs=True, plot_obs_samples=False)
 
 
-# --- Freeze sample evaluations in each model (This is time consuming, but only needs to be done once for each KDE model so we don't need to recompute p_model(data) over and over again when the observation values aren't going to change. Lower the number of samples per observation to speed this up.)
+# --- Freeze sample evaluations in each model. 
+# This is time consuming, but only needs to be done once for each KDE model, 
+# so we don't need to recompute p_model(data) over and over again when the 
+# observation values aren't going to change. 
+# Lower the number of samples per observation to speed this up.
 if VERBOSE:
     print("Freezing sample evaluations in their respective models...")
 for model in model_names:
     for channel in channels:
         if VERBOSE:
             print("  {0:s}, {1:s}".format(model, channel))
+        import pdb; pdb.set_trace()
         kde_models[model][channel].freeze(obsdata)
 if VERBOSE:
     print("Done freezing KDE evaluations of observations!\n")

@@ -12,57 +12,23 @@ from matplotlib import gridspec
 
 from . import *
 
-colors = ['#377eb8', '#ff7f00', '#4daf4a',
-                '#f781bf', '#a65628', '#984ea3',
-                '#999999', '#e41a1c', '#dede00']
+cp = sns.color_palette("colorblind", 6)
+plt.style.use("/Users/michaelzevin/.MATPLOTLIB_RCPARAMS.sty")
 
-params = {
-        # latex
-        'text.usetex': False,
-
-        # fonts
-        'font.family': 'serif',
-
-        # figure and axes
-        'figure.figsize': (12, 8),
-        'figure.titlesize': 35,
-        'axes.grid': True,
-        'axes.titlesize':35,
-        #'axes.labelweight': 'bold',
-        'axes.labelsize': 25,
-
-        # tick markers
-        'xtick.direction': 'in',
-        'ytick.direction': 'in',
-        'xtick.labelsize': 20,
-        'ytick.labelsize': 20,
-        'xtick.major.size': 10.0,
-        'ytick.major.size': 10.0,
-        'xtick.minor.size': 3.0,
-        'ytick.minor.size': 3.0,
-
-        # legend
-        'legend.fontsize': 20,
-        'legend.frameon': True,
-        'legend.framealpha': 0.5,
-
-        # colors
-        'image.cmap': 'viridis',
-
-        # saving figures
-        'savefig.dpi': 150
-        }
-
-
-_param_bounds = {"mchirp": (0,70), "q": (0,1), "chieff": (-1,1)}
-_labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", "chieff": r"$\chi_{\rm eff}$"}
+_param_bounds = {"mchirp": (0,70), "q": (0,1), "chieff": (-1,1), "z": (0,3)}
+_labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
+"chieff": r"$\chi_{\rm eff}$", "z": r"$z$"}
 _Nsamps = 10000
 
-def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=False, plot_obs_samples=False):
+
+def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, \
+                                plot_obs=False, plot_obs_samples=False):
     """
-    Plots all the KDEs for each channel in each model, as well as the *true* model described by the input branching fraction.
+    Plots all the KDEs for each channel in each model, as well as the *true* 
+    model described by the input branching fraction.
     """
-    fig, axs = plt.subplots(len(kde_models), len(params), figsize=(6*len(params), 5*len(kde_models)))
+    fig, axs = plt.subplots(len(kde_models), len(params), \
+                        figsize=(6*len(params), 5*len(kde_models)))
     axs = axs.reshape(len(kde_models), len(params))
 
     model_names = list(kde_models.keys())
@@ -70,6 +36,7 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=F
 
     # loop over all models...
     for idx, model in enumerate(model_names):
+        print('   '+model)
 
         # loop over all parameters...
         for pidx, param in enumerate(params):
@@ -81,7 +48,7 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=F
             pdf_max = 0
             # loop over all channels...
             for cidx, channel in enumerate(kde_models[model]):
-                print('   '+model, param, channel)
+                #print('   '+model, param, channel)
                 kde = kde_models[model][channel]
 
                 # marginalize the kde
@@ -91,14 +58,17 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=F
                 eval_pts = np.linspace(*_param_bounds[param], 100)
                 eval_pts = eval_pts.reshape(100,1,1)
                 pdf = marg_kde(eval_pts)
-                pdf_max = pdf.max() if pdf.max() > pdf_max else pdf_max
+                # hacky way to deal with large spikes in CHE mass ratio
+                if (channel != 'CHE') or (param != 'q'):
+                    pdf_max = pdf.max() if pdf.max() > pdf_max else pdf_max
 
                 # sample the marginalized KDE
                 if model0:
                     if cidx==0:
                         combined_samples = marg_kde.sample(int(kde._rel_frac*_Nsamps))
                     else:
-                        combined_samples = np.concatenate((combined_samples, marg_kde.sample(int(kde._rel_frac*_Nsamps))))
+                        combined_samples = np.concatenate((combined_samples, \
+                                marg_kde.sample(int(kde._rel_frac*_Nsamps))))
 
                 # legend label
                 if not model0:
@@ -107,25 +77,27 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=F
                     label = channel+r" ($\beta$={0:0.1f})".format(kde._rel_frac)
 
                 # plot the kde
-                ax.plot(eval_pts.flatten(), pdf, color=colors[cidx], label=label)
+                ax.plot(eval_pts.flatten(), pdf, color=cp[cidx], label=label)
 
                 # format plot
                 ax.set_xlim(*_param_bounds[param])
                 ax.set_ylim(0, pdf_max)
 
                 if idx==len(kde_models)-1:
-                    ax.set_xlabel(_labels_dict[param], fontsize=20)
+                    ax.set_xlabel(_labels_dict[param], fontsize=40)
                 if pidx==0:
-                    ax.set_ylabel(model, fontsize=20)
-                if idx==0 and pidx==0:
-                    ax.legend(prop={'size':20})
+                    ax.set_ylabel(model, fontsize=50)
+                if idx==0 and pidx==(len(params)-1):
+                    ax.legend(prop={'size':30})
                 if idx==0:
-                    ax.set_title(_labels_dict[param], fontsize=25)
+                    ax.set_title(_labels_dict[param], fontsize=40)
 
             # construct combined KDE model and plot
             if model0:
-                combined_samples = pd.DataFrame(combined_samples.flatten(), columns=[param])
-                combined_kde = KDEModel.from_samples('combined_kde', combined_samples, [param], weighting=None)
+                combined_samples = pd.DataFrame(combined_samples.flatten(), \
+                                                            columns=[param])
+                combined_kde = KDEModel.from_samples('combined_kde', \
+                                  combined_samples, [param], weighting=None)
                 eval_pts = np.linspace(*_param_bounds[param], 100)
                 eval_pts = eval_pts.reshape(100,1,1)
                 pdf = combined_kde(eval_pts)
@@ -138,28 +110,34 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=F
                 for obs in obsdata:
                     if obs.shape[0] == 1:
                         # delta function observations
-                        ax.axvline(obs[:,pidx], ymax=0.2, color='b', alpha=0.5, zorder=10)
+                        ax.axvline(obs[:,pidx], ymax=0.2, color='b', \
+                                                    alpha=0.5, zorder=10)
                     elif plot_obs_samples:
-                        ax.axvline(np.median(obs[:,pidx]), ymax=0.2, color='b', alpha=0.5, zorder=10)
+                        ax.axvline(np.median(obs[:,pidx]), ymax=0.2, \
+                                            color='b', alpha=0.5, zorder=10)
                         # construct KDE from observations
                         obs_samps = pd.DataFrame(obs[:,pidx], columns=[param])
-                        obs_kde = KDEModel.from_samples('obs_kde', obs_samps, [param], weighting=None)
-                        eval_pts = np.linspace(obs_samps.min(), obs_samps.max(), 100)
+                        obs_kde = KDEModel.from_samples('obs_kde', obs_samps, \
+                                                       [param], weighting=None)
+                        eval_pts = np.linspace(obs_samps.min(), \
+                                                        obs_samps.max(), 100)
                         eval_pts = eval_pts.reshape(100,1,1)
                         pdf = obs_kde(eval_pts)
 
                         # scale down the pdf
                         pdf = 0.2 * pdf/(pdf.max()/pdf_max)
 
-                        ax.fill_between(eval_pts.flatten(), y1=np.zeros_like(pdf), y2=pdf, color='b', alpha=0.05)
+                        ax.fill_between(eval_pts.flatten(), \
+                          y1=np.zeros_like(pdf), y2=pdf, color='b', alpha=0.05)
                     else:
-                        ax.axvline(np.median(obs[:,pidx]), ymax=0.2, color='b', alpha=0.5, zorder=10)
+                        ax.axvline(np.median(obs[:,pidx]), ymax=0.2, \
+                                               color='b', alpha=0.5, zorder=10)
 
     if model0:
         model0_name = model0[list(model0.keys())[0]].label.split('_')[0]
     else:
         model0_name='GW observations'
-    plt.suptitle("Sampled model: {0:s}".format(model0_name), fontsize=40)
+    plt.suptitle("Sampled model: {0:s}".format(model0_name), fontsize=55)
     if name:
         fname = 'marginalized_kdes_'+name+'.png'
     else:
@@ -172,7 +150,8 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, plot_obs=F
 
 def plot_samples(samples, model_names, channels, model0, name=None):
     """
-    Plots the models that the chains are exploring, and histograms of the branching fraction recovered for each model.
+    Plots the models that the chains are exploring, and histograms of the 
+    branching fraction recovered for each model.
     """
     # take the low-T chain
     samples = samples[0]
@@ -194,7 +173,8 @@ def plot_samples(samples, model_names, channels, model0, name=None):
             smdl_locs = np.argwhere(chain[:,0]==midx)
             steps = np.arange(len(chain))
             for cidx, channel in enumerate(channels):
-                ax_chains[cidx].scatter(steps[smdl_locs], chain[smdl_locs,cidx+1], color=colors[midx], s=0.5, alpha=0.2)
+                ax_chains[cidx].scatter(steps[smdl_locs], \
+                    chain[smdl_locs,cidx+1], color=cp[midx], s=0.5, alpha=0.2)
 
     # plot the histograms on beta for each model
     basemdl_samps = len(np.argwhere(samples[:,:,0]==0))
@@ -206,16 +186,21 @@ def plot_samples(samples, model_names, channels, model0, name=None):
         else:
             BF = float(mdl_samps)
         for cidx, channel in enumerate(channels):
-            ax_margs[cidx].hist(samples[smdl_locs[:,0], smdl_locs[:,1], cidx+1], orientation='horizontal', histtype='step', color=colors[midx], bins=50, alpha=0.7, label=model+', BF={0:0.1e}'.format(BF))
+            ax_margs[cidx].hist(samples[smdl_locs[:,0], smdl_locs[:,1], cidx+1], \
+               orientation='horizontal', histtype='step', color=cp[midx], \
+               bins=50, alpha=0.7, label=model+', BF={0:0.1e}'.format(BF))
 
 
     # format plot
-    for cidx, (channel, ax_chain, ax_marg) in enumerate(zip(channels, ax_chains, ax_margs)):
+    for cidx, (channel, ax_chain, ax_marg) in enumerate(zip(channels, \
+                                                ax_chains, ax_margs)):
 
         # plot the injected value
         if model0:
-            ax_chain.axhline(model0[channel]._rel_frac, color='k', linestyle='--', alpha=0.7)
-            ax_marg.axhline(model0[channel]._rel_frac, color='k', linestyle='--', alpha=0.7)
+            ax_chain.axhline(model0[channel]._rel_frac, color='k', \
+                    linestyle='--', alpha=0.7)
+            ax_marg.axhline(model0[channel]._rel_frac, color='k', \
+                    linestyle='--', alpha=0.7)
 
         # legend
         if cidx == 0:

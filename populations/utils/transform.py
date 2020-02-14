@@ -18,19 +18,19 @@ def _to_eta(samples):
     m1, m2 = samples["m1"], samples["m2"]
     return (m1 * m2) / (m1 + m2)**2
 
-def _to_tilt_1(samples):
+def _to_tilt1(samples):
     if "theta1" not in samples.keys():
         return np.arccos(samples["cos_t1"])
     else:
         return samples["theta1"]
 
-def _to_tilt_2(samples):
+def _to_tilt2(samples):
     if "theta2" not in samples.keys():
         return np.arccos(samples["cos_t2"])
     else:
         return samples["theta2"]
 
-def _to_chi_eff(samples):
+def _to_chieff(samples):
     m1, m2 = samples["m1"], samples["m2"]
     a1, a2 = samples["a1"], samples["a2"]
     t1, t2 = samples["theta1"], samples["theta2"]
@@ -50,6 +50,6 @@ _DEFAULT_TRANSFORMS = {
     "mchirp": _to_mchirp,
     "q": _to_q, 
     "eta": _to_eta,
-    "theta1": _to_tilt_1,
-    "theta2": _to_tilt_2
+    "theta1": _to_tilt1,
+    "theta2": _to_tilt2
 }
