@@ -13,7 +13,7 @@ from matplotlib import gridspec
 from . import *
 
 cp = sns.color_palette("colorblind", 6)
-plt.style.use("/Users/michaelzevin/.MATPLOTLIB_RCPARAMS.sty")
+plt.style.use(".MATPLOTLIB_RCPARAMS.sty")
 
 _param_bounds = {"mchirp": (0,70), "q": (0,1), "chieff": (-1,1), "z": (0,3)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
@@ -178,6 +178,7 @@ def plot_samples(samples, model_names, channels, model0, name=None):
 
     # plot the histograms on beta for each model
     basemdl_samps = len(np.argwhere(samples[:,:,0]==0))
+    h_max = 0
     for midx, model in enumerate(model_names):
         smdl_locs = np.argwhere(samples[:,:,0]==midx)
         mdl_samps = len(smdl_locs)
@@ -186,9 +187,11 @@ def plot_samples(samples, model_names, channels, model0, name=None):
         else:
             BF = float(mdl_samps)
         for cidx, channel in enumerate(channels):
-            ax_margs[cidx].hist(samples[smdl_locs[:,0], smdl_locs[:,1], cidx+1], \
-               orientation='horizontal', histtype='step', color=cp[midx], \
-               bins=50, alpha=0.7, label=model+', BF={0:0.1e}'.format(BF))
+            h, bins, _ = ax_margs[cidx].hist(samples[smdl_locs[:,0], \
+                smdl_locs[:,1], cidx+1], orientation='horizontal', \
+                histtype='step', color=cp[midx], bins=50, alpha=0.7, \
+                label=model+', BF={0:0.1e}'.format(BF))
+            h_max = h if h>h_max else h_max
 
 
     # format plot
@@ -202,19 +205,29 @@ def plot_samples(samples, model_names, channels, model0, name=None):
             ax_marg.axhline(model0[channel]._rel_frac, color='k', \
                     linestyle='--', alpha=0.7)
 
+        # tick labels
+        if cidx != len(channels)-1:
+            ax_chain.set_xticks([])
+            ax_marg.set_xticks([])
+        else:
+            ax_chain.set_xticklabels(fontsize=20)
+            ax_marg.set_xticklabels(fontsize=20)
+        ax_chain.set_yticks([0,0.5,1.0])
+        ax_chain.set_yticklabls(fontsize=20)
+        ax_marg.set_yticks([])
+
         # legend
         if cidx == 0:
             ax_marg.legend(loc='upper right', prop={'size':12})
 
         if cidx == len(channels)-1:
-            ax_chain.set_xlabel('Step', fontsize=20)
-            ax_marg.set_xlabel(r"$\beta$", fontsize=20)
+            ax_chain.set_xlabel('Step', fontsize=30)
+            ax_marg.set_xlabel(r"$\beta$", fontsize=30)
 
-        ax_chain.set_ylabel(r"$\beta_{%s}$" % format(channel), fontsize=20)
+        ax_chain.set_ylabel(r"$\beta_{%s}$" % format(channel), fontsize=30)
         ax_chain.set_xlim(0,samples.shape[1])
         ax_chain.set_ylim(0,1)
         ax_marg.set_ylim(0,1)
-        ax_marg.set_yticks([])
 
 
     # title
@@ -222,11 +235,12 @@ def plot_samples(samples, model_names, channels, model0, name=None):
         model0_name = model0[list(model0.keys())[0]].label.split('_')[0]
     else:
         model0_name='GW observations'
-    plt.suptitle("True model: {0:s}".format(model0_name), fontsize=30)
+    plt.suptitle("True model: {0:s}".format(model0_name), fontsize=40)
     if name:
         fname = 'samples_'+name+'.png'
     else:
         fname = 'samples.png'
+    plt.tight_layout()
     plt.savefig(fname)
     plt.close()
 

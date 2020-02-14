@@ -13,10 +13,12 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 
-from populations import bbh_models, sample, gw_obs, msplot
+from populations import bbh_models, gw_obs
+from sample import sample
+from plot import msplot
 
 VERBOSE=True
-MAKE_PLOTS=False
+MAKE_PLOTS=True
 
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
@@ -205,12 +207,12 @@ for model in model_names:
     for channel in channels:
         if VERBOSE:
             print("  {0:s}, {1:s}".format(model, channel))
-        import pdb; pdb.set_trace()
         kde_models[model][channel].freeze(obsdata)
 if VERBOSE:
     print("Done freezing KDE evaluations of observations!\n")
 
 
+import pdb; pdb.set_trace()
 
 # --- Do the sampling!
 
@@ -226,9 +228,12 @@ if MAKE_PLOTS==True:
     msplot.plot_samples(samples, model_names, channels, model0, name=args.name)
 
 
-# reshape to have all steps from all walkers in a single dimension (note that we added a dim for the last beta that we synthesized)
-samples = samples.reshape((sampler.ntemps, sampler.nwalkers * sampler.Nsteps_final, sampler.ndim+1))
-lnprb = lnprb.reshape((sampler.ntemps, sampler.nwalkers * sampler.Nsteps_final))
+# reshape to have all steps from all walkers in a single dimension
+# (note that we added a dim for the last beta that we synthesized)
+samples = samples.reshape((sampler.ntemps, \
+            sampler.nwalkers * sampler.Nsteps_final, sampler.ndim+1))
+lnprb = lnprb.reshape((sampler.ntemps, \
+            sampler.nwalkers * sampler.Nsteps_final))
 
 # Parse out the model index in low-T chain
 smdl_counts = np.floor(samples[0,:,0]).astype(int)
@@ -243,7 +248,8 @@ if VERBOSE:
             beta = samples[0,:,1][locs].mean()
         else:
             beta = np.nan
-        print("  Model {0:s} ({1:d}): {2:d} samples, beta={3:0.2f}".format(smdl, smdl_idx, counts, beta))
+        print("  Model {0:s} ({1:d}): {2:d} samples, \
+                    beta={3:0.2f}".format(smdl, smdl_idx, counts, beta))
     print("")
 
 
@@ -259,7 +265,8 @@ if args.evidence:
         evidence_sampler.sample(kde_models, obsdata)
         smdl_samplers[smdl] = evidence_sampler
         if VERBOSE:
-            print("  {0:s} log evidence: {1:0.3f}\n".format(smdl,evidence_sampler.lnZ))
+            print("  {0:s} log evidence: {1:0.3f}\n".format(smdl,\
+                               evidence_sampler.lnZ))
 
 
 
@@ -282,7 +289,8 @@ if args.save_samples:
     if args.model0=='gwobs':
         info = np.append([str(args.model0)], [*events])
     else:
-        info = np.append([str(args.model0)], [*[key+': '+str(model0[key]._rel_frac) for key in model0.keys()]])
+        info = np.append([str(args.model0)], \
+            [*[key+': '+str(model0[key]._rel_frac) for key in model0.keys()]])
     info = [x.encode('utf-8') for x in info]
     bsgrp.attrs["model0_params"] = info
 

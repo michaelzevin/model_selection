@@ -148,7 +148,6 @@ but cannot find this column in the samples datafarme!")
             d_pdf = data_pdf[idx] if data_pdf is not None else 1
             # FIXME: does it matter that we average rather than sum?
             prob[idx] += np.sum(self._pdf(obs) / d_pdf) / len(obs)
-            import pdb; pdb.set_trace()
         return prob
 
     def extent(self):
