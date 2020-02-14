@@ -18,7 +18,7 @@ from sample import sample
 from plot import msplot
 
 VERBOSE=True
-MAKE_PLOTS=False
+MAKE_PLOTS=True
 
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
