@@ -4,16 +4,19 @@ Plotting functions so we don't bog down the executable
 
 import numpy as np
 import pandas as pd
+import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set_style("whitegrid")
 
 from matplotlib import gridspec
 
-from . import *
+from populations import *
 
 cp = sns.color_palette("colorblind", 6)
-plt.style.use(".MATPLOTLIB_RCPARAMS.sty")
+# FIXME don't hardcode...
+_basepath, _ = os.path.split(os.path.realpath(__file__))
+plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 
 _param_bounds = {"mchirp": (0,70), "q": (0,1), "chieff": (-1,1), "z": (0,3)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
@@ -161,7 +164,7 @@ def plot_samples(samples, model_names, channels, model0, name=None):
 
     # setup the plots
     fig = plt.figure(figsize=(12,7))
-    gs = gridspec.GridSpec(len(channels),3, wspace=0.1, hspace=0.1)
+    gs = gridspec.GridSpec(len(channels), 3, wspace=0.2, hspace=0.2)
     ax_chains, ax_margs = [], []
     for cidx, channel in enumerate(channels):
         ax_chains.append(fig.add_subplot(gs[cidx, :2]))
@@ -191,7 +194,7 @@ def plot_samples(samples, model_names, channels, model0, name=None):
                 smdl_locs[:,1], cidx+1], orientation='horizontal', \
                 histtype='step', color=cp[midx], bins=50, alpha=0.7, \
                 label=model+', BF={0:0.1e}'.format(BF))
-            h_max = h if h>h_max else h_max
+            h_max = h.max() if h.max() > h_max else h_max
 
 
     # format plot
@@ -207,14 +210,12 @@ def plot_samples(samples, model_names, channels, model0, name=None):
 
         # tick labels
         if cidx != len(channels)-1:
-            ax_chain.set_xticks([])
-            ax_marg.set_xticks([])
-        else:
-            ax_chain.set_xticklabels(fontsize=20)
-            ax_marg.set_xticklabels(fontsize=20)
+            ax_chain.set_xticklabels([])
+            ax_marg.set_xticklabels([])
         ax_chain.set_yticks([0,0.5,1.0])
-        ax_chain.set_yticklabls(fontsize=20)
-        ax_marg.set_yticks([])
+        ax_marg.set_yticklabels([])
+        ax_chain.tick_params(axis='both', labelsize=20)
+        ax_marg.tick_params(axis='both', labelsize=20)
 
         # legend
         if cidx == 0:
@@ -222,11 +223,12 @@ def plot_samples(samples, model_names, channels, model0, name=None):
 
         if cidx == len(channels)-1:
             ax_chain.set_xlabel('Step', fontsize=30)
-            ax_marg.set_xlabel(r"$\beta$", fontsize=30)
+            ax_marg.set_xlabel(r"p($\beta$)", fontsize=30)
 
         ax_chain.set_ylabel(r"$\beta_{%s}$" % format(channel), fontsize=30)
         ax_chain.set_xlim(0,samples.shape[1])
         ax_chain.set_ylim(0,1)
+        ax_marg.set_xlim(0,h_max+10)
         ax_marg.set_ylim(0,1)
 
 
@@ -240,7 +242,7 @@ def plot_samples(samples, model_names, channels, model0, name=None):
         fname = 'samples_'+name+'.png'
     else:
         fname = 'samples.png'
-    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.15)
     plt.savefig(fname)
     plt.close()
 

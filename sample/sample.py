@@ -15,7 +15,7 @@ _prior = 'emcee_lnp'
 _likelihood = 'emcee_lnlike'
 _nwalkers = 16
 _ntemps = 4
-_nsteps = 5000
+_nsteps = 500
 _fburnin = 0.2
 
 """

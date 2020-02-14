@@ -18,7 +18,7 @@ from sample import sample
 from plot import msplot
 
 VERBOSE=True
-MAKE_PLOTS=True
+MAKE_PLOTS=False
 
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
@@ -212,7 +212,6 @@ if VERBOSE:
     print("Done freezing KDE evaluations of observations!\n")
 
 
-import pdb; pdb.set_trace()
 
 # --- Do the sampling!
 
@@ -244,12 +243,16 @@ if VERBOSE:
     for smdl_idx, smdl in enumerate(model_names):
         counts = len(smdl_counts[smdl_counts == smdl_idx])
         locs = np.where(smdl_counts==smdl_idx)
-        if len(locs[0]) > 0:
-            beta = samples[0,:,1][locs].mean()
-        else:
-            beta = np.nan
+        recovered_betas = {}
+        for cidx, channel in enumerate(channels):
+            if len(locs[0]) > 0:
+                beta = samples[0,:,(cidx+1)][locs].mean()
+                beta = round(beta, 2)
+            else:
+                beta = np.nan
+            recovered_betas[channel] = beta
         print("  Model {0:s} ({1:d}): {2:d} samples, \
-                    beta={3:0.2f}".format(smdl, smdl_idx, counts, beta))
+betas={3}".format(smdl, smdl_idx, counts, list(recovered_betas.items())))
     print("")
 
 
