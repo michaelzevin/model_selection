@@ -229,13 +229,12 @@ if MAKE_PLOTS==True:
 
 # reshape to have all steps from all walkers in a single dimension
 # (note that we added a dim for the last beta that we synthesized)
-samples = samples.reshape((sampler.ntemps, \
-            sampler.nwalkers * sampler.Nsteps_final, sampler.ndim+1))
-lnprb = lnprb.reshape((sampler.ntemps, \
-            sampler.nwalkers * sampler.Nsteps_final))
+samples = samples.reshape((sampler.nwalkers * sampler.Nsteps_final, \
+                                sampler.ndim+1))
+lnprb = lnprb.reshape((sampler.nwalkers * sampler.Nsteps_final))
 
-# Parse out the model index in low-T chain
-smdl_counts = np.floor(samples[0,:,0]).astype(int)
+# Parse out the model index
+smdl_counts = np.floor(samples[:,0]).astype(int)
 
 # Print summary info about the sampling
 if VERBOSE:
@@ -246,7 +245,7 @@ if VERBOSE:
         recovered_betas = {}
         for cidx, channel in enumerate(channels):
             if len(locs[0]) > 0:
-                beta = samples[0,:,(cidx+1)][locs].mean()
+                beta = samples[:,(cidx+1)][locs].mean()
                 beta = round(beta, 2)
             else:
                 beta = np.nan

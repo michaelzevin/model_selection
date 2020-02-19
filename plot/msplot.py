@@ -156,9 +156,6 @@ def plot_samples(samples, model_names, channels, model0, name=None):
     Plots the models that the chains are exploring, and histograms of the 
     branching fraction recovered for each model.
     """
-    # take the low-T chain
-    samples = samples[0]
-
     # take the floor of the model samples
     samples[:,:,0] = np.floor(samples[:,:,0])
 
