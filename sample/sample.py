@@ -8,14 +8,16 @@ import emcee
 from emcee import EnsembleSampler
 
 VERBOSE=True
+
 _valid_samplers = {'emcee': EnsembleSampler}
 
 _sampler = 'emcee'
 _prior = 'emcee_lnp'
 _likelihood = 'emcee_lnlike'
 _posterior = 'emcee_lnpost'
+
 _nwalkers = 16
-_nsteps = 5000
+_nsteps = 10000
 _fburnin = 0.2
 
 """
@@ -40,27 +42,35 @@ class Sampler(object):
         # note that ndim is (Nchannels-1) + 1 for the model index
         self.ndim = (len(channels)-1) + 1
         # kwargs
-        self.sampler_name = kwargs['sampler'] if 'sampler' in kwargs else _sampler
+        self.sampler_name = kwargs['sampler'] if 'sampler' in kwargs \
+                                                            else _sampler
         if self.sampler_name not in _valid_samplers.keys():
-            raise NameError("Sampler {0:s} is unknown, check valid samplers!".format(self.sampler_name))
+            raise NameError("Sampler {0:s} is unknown, check valid \
+samplers!".format(self.sampler_name))
         self.sampler = _valid_samplers[self.sampler_name]
 
         self.prior_name = kwargs['prior'] if 'prior' in kwargs else _prior
         if self.prior_name not in _valid_priors.keys():
-            raise NameError("Prior function {0:s} is unknown, check valid priors!".format(self.prior_name))
+            raise NameError("Prior function {0:s} is unknown, check valid \
+priors!".format(self.prior_name))
         self.prior = _valid_priors[self.prior_name]
 
-        self.likelihood_name = kwargs['likelihood'] if 'likelihood' in kwargs else _likelihood
+        self.likelihood_name = kwargs['likelihood'] if 'likelihood' in kwargs \
+                                                            else _likelihood
         if self.likelihood_name not in _valid_likelihoods.keys():
-            raise NameError("Likelihood function {0:s} is unknown, check valid likelihoods!".format(self.likelihood_name))
+            raise NameError("Likelihood function {0:s} is unknown, check \
+valid likelihoods!".format(self.likelihood_name))
         self.likelihood = _valid_likelihoods[self.likelihood_name]
 
-        self.posterior_name = kwargs['posterior'] if 'posterior' in kwargs else _posterior
+        self.posterior_name = kwargs['posterior'] if 'posterior' in kwargs \
+                                                            else _posterior
         if self.posterior_name not in _valid_posteriors.keys():
-            raise NameError("Posterior function {0:s} is unknown, check valid posteriors!".format(self.posterior_name))
+            raise NameError("Posterior function {0:s} is unknown, check valid \
+posteriors!".format(self.posterior_name))
         self.posterior = _valid_posteriors[self.posterior_name]
 
-        self.nwalkers = kwargs['nwalkers'] if 'nwalkers' in kwargs else _nwalkers
+        self.nwalkers = kwargs['nwalkers'] if 'nwalkers' in kwargs \
+                                                            else _nwalkers
         self.nsteps = kwargs['nsteps'] if 'nsteps' in kwargs else _nsteps
         self.fburnin = kwargs['fburnin'] if 'fburnin' in kwargs else _fburnin
 
@@ -78,18 +88,25 @@ class Sampler(object):
         _concentration = np.ones(len(self.channels))
         p0[:,:] = dirichlet.rvs(_concentration, p0.shape[0])
 
-        # we overwrite one of the betas with the model index; we only use Nchannel-1 betas in the inference because of the implicit constraint that Sum(betas) = 1
-        p0[:,0] = np.random.uniform(0, len(self.model_names), size=self.nwalkers)
+        # we overwrite one of the betas with the model index; we only use 
+        # Nchannel-1 betas in the inference because of the implicit constraint 
+        # that Sum(betas) = 1
+        p0[:,0] = np.random.uniform(0, len(self.model_names), \
+                                                    size=self.nwalkers)
 
         # do the sampling
-        posterior_args = [obsdata, kde_models, self.submodels_dict, self.model_names, self.channels, _concentration, self.smdl_name]
+        posterior_args = [obsdata, kde_models, self.submodels_dict, \
+             self.model_names, self.channels, _concentration, self.smdl_name]
         if VERBOSE:
             print("Sampling...")
-        sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, args=posterior_args)
-        for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)):
+        sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, \
+                                                       args=posterior_args)
+        for idx, result in enumerate(sampler.sample(p0, \
+                                                    iterations=self.nsteps)):
             if VERBOSE:
                 if (idx+1) % 50 == 0:
-                    sys.stderr.write("\r  {0}% (N={1})".format(float(idx+1)*100. / self.nsteps, idx+1))
+                    sys.stderr.write("\r  {0}% (N={1})".\
+                                format(float(idx+1)*100. / self.nsteps, idx+1))
         if VERBOSE:
             print("\nSampling complete!\n")
 
@@ -106,7 +123,7 @@ class Sampler(object):
 
         self.samples = samples
         self.lnprb = lnprb
-        # FIXME look into ensemble sampler more
+        # FIXME look into ensemble sampler evidence calculations more
         #evidence = sampler.thermodynamic_integration_log_evidence(fburnin=self.fburnin)
         #self.lnZ, self.dlnZ = evidence[0], evidence[1]
 
@@ -117,7 +134,9 @@ class Sampler(object):
 
 def lnp(x, model_names, _concentration):
     """
-    Log of the prior. Returns logL of -inf for points outside, uniform within. Is conditional on the sum of the betas being one.
+    Log of the prior. 
+    Returns logL of -inf for points outside, uniform within. 
+    Is conditional on the sum of the betas being one.
     """
     model = x[0]
     betas_tmp = np.asarray(x[1:])
@@ -138,7 +157,8 @@ def lnp(x, model_names, _concentration):
 
 def lnlike(x, data, kde_models, submodels_dict, channels, smdl_name):
     """
-    Log of the prior x likelihood. Selects on model, then tests beta.
+    Log of the prior x likelihood. 
+    Selects on model, then tests beta.
     """
     # if sampling a specific submodel only, override the sampler
     if smdl_name:
@@ -162,9 +182,11 @@ def lnlike(x, data, kde_models, submodels_dict, channels, smdl_name):
     return np.log(prob).sum()
 
 
-def lnpost(x, data, kde_models, submodels_dict, model_names, channels, _concentration, smdl_name):
+def lnpost(x, data, kde_models, submodels_dict, model_names, channels, \
+                                                _concentration, smdl_name):
     """
-    Combines the prior and likelihood to give a log posterior probability at a given point
+    Combines the prior and likelihood to give a log posterior probability 
+    at a given point
     """
     # Prior
     log_prior = lnp(x, model_names, _concentration)
@@ -175,6 +197,8 @@ def lnpost(x, data, kde_models, submodels_dict, model_names, channels, _concentr
     log_like = lnlike(x, data, kde_models, submodels_dict, channels, smdl_name)
 
     return log_like + log_prior
+
+
 
 
 _valid_priors = {'emcee_lnp': lnp}
