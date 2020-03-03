@@ -19,15 +19,11 @@ import multiprocessing
 from functools import partial
 from tqdm import tqdm
 
-import lalsimulation
-import lal
-
 import astropy.units as u
 from astropy import cosmology
 from astropy.cosmology import z_at_value
 
 # import important lal stuff
-import lal, lalsimulation
 from pycbc.detector import Detector
 
 from utils import selection_effects
@@ -35,12 +31,13 @@ from utils import selection_effects
 cosmo = cosmology.Planck15
 
 ### Specify input and output directories
-_dirpath = '/Users/michaelzevin/research/model_selection/spins/data/unweighted/spin_models/'
-_outdir = '/Users/michaelzevin/research/model_selection/spins/data/detection_weighted/spin_models/'
+_basepath = '/projects/b1095/michaelzevin/'
+_dirpath = _basepath+'model_selection/spins/data/unweighted/spin_models/'
+_outdir = _basepath+'model_selection/spins/data/detection_weighted/spin_models/'
 
 
 ### Specify PSD information
-_psd_path = "/Users/michaelzevin/research/ligo/PSDs/"
+_psd_path = _basepath+"ligo/PSDs/"
 _ligo_psd = "LIGO_P1200087.dat"
 _virgo_psd = "Virgo_P1200087.dat"
 
