@@ -5,6 +5,8 @@ Plotting functions so we don't bog down the executable
 import numpy as np
 import pandas as pd
 import os
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set_style("whitegrid")
@@ -14,7 +16,6 @@ from matplotlib import gridspec
 from populations import *
 
 cp = sns.color_palette("colorblind", 6)
-# FIXME don't hardcode...
 _basepath, _ = os.path.split(os.path.realpath(__file__))
 plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 
