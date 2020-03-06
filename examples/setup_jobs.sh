@@ -3,7 +3,7 @@
 model0=chi01
 
 for nobs in 10 30 50 100 200 300 500 1000;
-    do cat << EOF > submit_n${nobs}.sh
+    do cat << EOF > submit_${nobs}.sh
 #!/bin/bash
 
 #SBATCH -A b1095
@@ -15,7 +15,7 @@ for nobs in 10 30 50 100 200 300 500 1000;
 
 module purge all
 module load python/anaconda3.6
-source activate modelselect-py37
+source activate modelselect-py36
 
 python /projects/b1095/michaelzevin/github/model_selection/spins/model_select \
 --dirpath /projects/b1095/michaelzevin/model_selection/spins/data/detection_weighted/spin_models/ \
@@ -28,12 +28,13 @@ python /projects/b1095/michaelzevin/github/model_selection/spins/model_select \
 --save-samples \
 --beta 0.5 0.2 0.3 \
 --name ${model0}_${nobs} \
---smear gaussian \
+--smear gaussian
 
 mkdir -p trials
-mkdir -p trials/n${nobs}
+mkdir -p trials/${nobs}
 
-mv model_select_${nobs}.out marginalized_kdes_${model0}_${nobs}.png samples_${model0}_${nobs}.png trials/n${nobs}/
+cp submit_${nobs}.sh trials/${nobs}/
+mv output_${model0}_${nobs}.hdf5 marginalized_kdes_${model0}_${nobs}.png samples_${model0}_${nobs}.png model_select_${nobs}.out trials/${nobs}/
 
 
 EOF
