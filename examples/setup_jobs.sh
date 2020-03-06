@@ -14,7 +14,6 @@ for nobs in 10 30 50 100 200 300 500 1000;
 #SBATCH --output="model_select_n${nobs}.out"
 
 module purge all
-module load python/anaconda3.7
 source activate modelselect-py37
 
 python /projects/b1095/michaelzevin/github/model_selction/spins/model_select \
