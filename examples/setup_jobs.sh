@@ -18,17 +18,17 @@ module load python/anaconda3.7
 source activate modelselect-py37
 
 python /projects/b1095/michaelzevin/github/model_selction/spins/model_select \
--d /projects/b1095/michaelzevin/model_selection/spins/data/detection_weighted/spin_models/ \
--m ${model0} \
--n ${nobs} \
--N 100 \
--gw /projects/b1095/michaelzevin/model_selection/spins/data/gw_events/ \
--p mchirp q chieff z \
--w pdet_designnetwork \
--S \
--b 0.5 0.2 0.3 \
+-dirpath /projects/b1095/michaelzevin/model_selection/spins/data/detection_weighted/spin_models/ \
+--model0 ${model0} \
+--Nobs ${nobs} \
+--Nsamps 100 \
+--gwpath /projects/b1095/michaelzevin/model_selection/spins/data/gw_events/ \
+--params mchirp q chieff z \
+--wrights pdet_designnetwork \
+--save-samples \
+--beta 0.5 0.2 0.3 \
 --name ${model0}_${nobs} \
--s gaussian \
+--smear gaussian \
 
 EOF
 done
