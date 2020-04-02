@@ -55,7 +55,7 @@ gwtc_transforms = {'mchirp': _gwtc_to_mchirp, 'q': _gwtc_to_q, \
                    'chieff': _gwtc_to_chieff, 'z': _gwtc_to_redshift}
 
 
-def generate_observations(params, gwpath, Nsamps, smeared=None):
+def generate_observations(params, gwpath, Nsamps, mesaurement_uncertainty=None):
 
     # Check to see if the files are in the obspath, else raise error
     for gw in _events:
@@ -73,15 +73,15 @@ is present in the directory '{1:s}'!".format(gw,gwpath))
 
 
     # Set up samples for the specified smearing
-    if not smeared:
+    if not mesaurement_uncertainty:
         samples_shape = (len(_events), 1, len(params))
         samples=np.zeros(samples_shape)
-    elif smeared in ['gaussian', 'posteriors']:
+    elif mesaurement_uncertainty in ['gaussian', 'posteriors']:
         samples_shape = (len(_events), Nsamps, len(params))
         samples=np.zeros(samples_shape)
     else:
         raise ValueError("{0:s} is not an available options for smearing GW \
-observations!".format(smeared))
+observations!".format(mesaurement_uncertainty))
 
     # Now, get the samples for each event
     for idx, f in enumerate(_files):
@@ -101,11 +101,11 @@ observations!".format(smeared))
 no transformations exist to generate it from the GW data!".format(p))
 
         # delta function observations
-        if not smeared:
+        if not mesaurement_uncertainty:
             for pidx, p in enumerate(params):
                 samples[idx, :, pidx] = np.median(df[p])
         # gaussian smearing
-        if smeared == 'gaussian':
+        if mesaurement_uncertainty == 'gaussian':
             for pidx, p in enumerate(params):
                 mean = np.mean(df[p])
                 low = np.percentile(df[p], 16)
@@ -113,7 +113,7 @@ no transformations exist to generate it from the GW data!".format(p))
                 sigma = ((high-mean) + (mean-low))/2.0
                 samples[idx, :, pidx] = np.random.normal(loc=mean, \
                                                 scale=sigma, size=Nsamps)
-        if smeared == 'posteriors':
+        if mesaurement_uncertainty == 'posteriors':
             for pidx, p in enumerate(params):
                 if len(df) >= Nsamps:
                     samples[idx, :, pidx] = df[p].sample(Nsamps, replace=False)

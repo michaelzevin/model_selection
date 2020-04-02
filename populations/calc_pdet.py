@@ -80,7 +80,7 @@ for ifos, name in zip(_configs,_names):
 
     # set up partial functions and organize data for multiprocessing
     systems_info = []
-    func = partial(selection_effects.detection_probability, ifos=ifos, rho_det=args.snr_min, Ntrials=args.Ntrials, psd_path=_psd_path)
+    func = partial(selection_effects.detection_probability, ifos=ifos, rho_thresh=args.snr_min, Ntrials=args.Ntrials, psd_path=_psd_path)
 
     # set up systems for multiprocessing
     for idx, system in pop.iterrows():

@@ -16,8 +16,6 @@ from astropy.cosmology import z_at_value
 import lal, lalsimulation
 from pycbc.detector import Detector
 
-from pdb import set_trace
-
 cosmo = cosmology.Planck15
 
 
@@ -158,9 +156,15 @@ def snr(hpf, hxf, freqs, psd, **kwargs):
 
     return np.sqrt(4*np.real(np.sum(hf_cut*np.conj(hf_cut)*df/psd_vals)))
 
+def snr_opt_approx(mc, dL, N=11.15):
+    """
+    Gets optimal SNR from first-order approxmation. 
+    The normalization factor is calculated using an equal-mass Mc_det=10 Msun binary at 1 Gpc.
+    """
+    return N*(mc/10)**(5./6) * (dL / 1)**(-1)
 
 # Sampling of extrinsic parameters
-def sample_extrinsic(hpf, hxf, det):
+def sample_extrinsic(det):
     """
     Varies extrinsic parameters of waveform for calculating detection probability
     """
@@ -219,7 +223,7 @@ def gen_redshifts_unicomvol(n=1, z_max=3):
 
 
 # Detection probability function
-def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, Ntrials=1000, **kwargs):
+def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, Ntrials=1000, **kwargs):
     """
     Calls other functions in this file to calculate a detection probability
     For multiprocessing purposes, takes in array 'system' of form:
@@ -256,7 +260,7 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, Ntr
         rho_opts[ifo] = snr(hpf_opt, hxf_opt, freqs, psds[ifo], f_low=f_low, df=df)
 
     # if the combined SNR is less than the detection threshold, give weight of 0
-    if np.linalg.norm(list(rho_opts.values())) < float(rho_det):
+    if np.linalg.norm(list(rho_opts.values())) < float(rho_thresh):
         weight = 0.0
 
     else:
@@ -264,11 +268,11 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_det=8.0, Ntr
         for i in range(Ntrials):
             network_snr = []
             for ifo, det in detectors.items():
-                rho_factor = sample_extrinsic(hpf_opt, hxf_opt, det)
+                rho_factor = sample_extrinsic(det)
                 network_snr.append(rho_opts[ifo]*rho_factor)
             snrs.append(np.sqrt(np.sum(np.square(network_snr))))
         # now, we see what percentage of SNRs passed our threshold
-        passed = sum(1 for i in snrs if i>=float(rho_det))
+        passed = sum(1 for i in snrs if i>=float(rho_thresh))
         weight = float(passed) / len(snrs)
 
     return weight

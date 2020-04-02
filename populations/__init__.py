@@ -3,19 +3,24 @@ import os
 import pickle
 import itertools
 import copy
-import pdb
+from tqdm import tqdm
 
 import numpy as np
 import scipy as sp
 import pandas as pd
 from scipy.stats import norm, truncnorm
+from .utils import selection_effects
 from .utils.bounded_Nd_kde import Bounded_Nd_kde
 
+from astropy import cosmology
+from astropy.cosmology import z_at_value
+import astropy.units as u
+cosmo = cosmology.Planck15
+
 # Need to ensure all parameters are normalized over the same range
-_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), \
-                                    "z": (0,5)}
-_smear_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, \
-                                    "z": 0.0463}
+_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,5)}
+_posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
+_snrscale_sigmas = {"mchirp": 0.08, "eta": 0.21, "chieff": 0.1, "Theta": 0.21}
 _KDE_maxsamps = int(1e4)
 
 """
@@ -67,7 +72,7 @@ but cannot find this column in the samples datafarme!")
 
         # Normalize data s.t. they all are on the unit cube
         self._param_bounds = [_param_bounds[param] for param in samples.keys()]
-        self._smear_sigmas = [_smear_sigmas[param] for param in samples.columns]
+        self._posterior_sigmas = [_posterior_sigmas[param] for param in samples.columns]
         samples = normalize_samples(np.asarray(samples), self._param_bounds)
 
         # add a little bit of scatter to samples that have the exact same 
@@ -167,32 +172,29 @@ but cannot find this column in the samples datafarme!")
 
         return KDEModel(label, self._samples[params], self._weights)
 
-    def generate_observations(self, Nobs, Nsamps=1, smeared=None):
+    def generate_observations(self, Nobs, Nsamps=1, measurement_uncertainty=None, rho_thresh=8):
         """
         Generates samples from KDE model. This will generated Nobs samples. \
-        If smeared is not None, will return Nsamps posterior samples \
+        If measurement_uncertainty is not None, will return Nsamps posterior samples \
         according to the available methods.
         """
 
         observations = self.sample(Nobs)
 
-        if not smeared:
+        if not measurement_uncertainty:
             # assume a delta function measurement
             obsdata = np.expand_dims(observations, 1)
             return obsdata
 
-        # smear out observations
-        if smeared not in ["gaussian"]:
-            raise ValueError("Unspecified smearing procedure: {0:s}".format(smeared))
-
+        # --- smear out observations
         # set up obsdata as [obs, samps, params]
         obsdata = np.zeros((Nobs, Nsamps, observations.shape[-1]))
 
-        if smeared == "gaussian":
+        if measurement_uncertainty == "gwevents":
             for idx, obs in enumerate(observations):
                 for pidx in np.arange(observations.shape[-1]):
                     mu = obs[pidx]
-                    sigma = self._smear_sigmas[pidx]
+                    sigma = self._posterior_sigmas[pidx]
                     low_lim = self._param_bounds[pidx][0]
                     high_lim = self._param_bounds[pidx][1]
 
@@ -208,6 +210,71 @@ but cannot find this column in the samples datafarme!")
 
                     obsdata[idx, :, pidx] = samps
 
+        elif measurement_uncertainty == "snr":
+            # Follow procedures from Fishbach et al. 2018, Farr et al. 2019
+            # Need both chirp mass and redshift to use this method!!!
+            # FIXME we want this to work when we aren't using these parameters for inference!
+            params = list(self._samples.keys())
+            for p in ['mchirp','q','z']:
+                if p not in params:
+                    raise KeyError("Need 'mchirp', 'q', and 'z' to use this measurement uncertainty method!")
+            for idx, obs in enumerate(observations):
+                z = obs[params.index('z')]
+                mc = obs[params.index('mchirp')]
+                mcdet = mc*(1+z)
+                q = obs[params.index('q')]
+                eta = q * (1+q)**(-2)
+                dL = cosmo.luminosity_distance(z).to(u.Gpc).value
+                # Get approximate optimal SNR
+                rho_opt = selection_effects.snr_opt_approx(mcdet, dL)
+                # Projection factor (ifo just needed for antenna pattern)
+                ifo = selection_effects.get_detector("H1")
+                Theta  = selection_effects.sample_extrinsic(ifo)
+                rho = rho_opt * Theta
+                # Apply Gaussian noise to SNR
+                rho_obs = rho + np.random.normal(loc=0, scale=1)
+                # FIXME: do we also need to choose a ML value??
+                rho_obs = 25
+                
+                # Now, convert from "true" values to "observed" values
+                mcdet_sig = _snrscale_sigmas['mchirp']*rho_thresh / rho_obs
+                mcdet_obs = 10**(np.log10(mcdet) + norm.rvs(loc=0, \
+                    scale=mcdet_sig, size=Nsamps))
+                eta_sig = _snrscale_sigmas['eta']*rho_thresh / rho_obs
+                eta_obs = truncnorm.rvs(a=(0-eta)/eta_sig, b=(0.25-eta)/eta_sig, loc=eta, \
+                    scale=eta_sig, size=Nsamps)
+                Theta_sig = _snrscale_sigmas['Theta']*rho_thresh / rho_obs
+                Theta_obs = truncnorm.rvs(a=(0-Theta)/Theta_sig, b=(1-Theta)/Theta_sig, loc=Theta, \
+                    scale=Theta_sig, size=Nsamps)
+
+                # get m1 and m2 detector-frame observations
+                Mvar = mcdet_obs / (eta_obs**(3./5))
+                m1det_obs = Mvar + np.sqrt(Mvar**2 - 4*eta_obs*Mvar**2) / 2
+                m2det_obs = Mvar - np.sqrt(Mvar**2 - 4*eta_obs*Mvar**2) / 2
+                # get dL and redshift observations
+                dL_obs = dL*selection_effects.snr_opt_approx(mcdet_obs, dL)*Theta_obs / rho_obs
+                z_obs = np.asarray([z_at_value(cosmo.luminosity_distance, d) for d in dL_obs*u.Gpc])
+                # get source-frame chirp mass
+                m1_obs = m1det_obs / (1+z_obs)
+                m2_obs = m2det_obs / (1+z_obs)
+                mc_obs = (m1_obs * m2_obs)**(3./5) / (m1_obs + m2_obs)**(1./5)
+
+                for pidx, param in enumerate(params):
+                    if param=='mchirp':
+                        obsdata[idx, :, pidx] = mc_obs
+                    if param=='q':
+                        q_obs = (1-np.sqrt(1-4*eta_obs)-2*eta_obs)/(2*eta_obs)
+                        obsdata[idx, :, pidx] = mc_obs
+                    if param=='chieff':
+                        chieff = obs[params.index('chieff')]
+                        chieff_sig = _snrscale_sigmas['chieff']*rho_thresh / rho_obs
+                        chieff_obs = truncnorm.rvs(a=(-1-chieff)/chieff_sig, b=(1-chieff)/chieff_sig, \
+                            loc=chieff, scale=chieff_sig, size=Nsamps)
+                        obsdata[idx, :, pidx] = chieff_obs
+                    if param=='z':
+                        obsdata[idx, :, pidx] = z_obs
+
+            import pdb; pdb.set_trace()
             return obsdata
 
 

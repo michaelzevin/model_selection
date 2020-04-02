@@ -8,6 +8,7 @@
 import sys
 import argparse
 import h5py
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -43,12 +44,13 @@ samples to be drawn from the posterior distributions and used to construct \
 the KDE models. Default=100.")
 argp.add_argument("-w", "--weights", type=str, help="Name of column in \
 dataframe of detection probabilities. Default=None.")
-argp.add_argument("-s", "--smear", type=str, help="Smear out observations in \
+argp.add_argument("-u", "--uncertainty", type=str, help="Smear out observations in \
 a mocked up attempt at non-delta function observation posteriors. For GW obs, \
-you can choose to smear using the actual posterior samples ('posterior'), or \
-from a mock gaussian ('gaussian'). For mock observations, you can currently \
-choose 'gaussian' to smear according to the average spread in parameters \
-from current GW observations. Default=None.")
+you can choose to smear using the actual posterior samples ('posteriors'), or \
+from a mock gaussian with the mean and sigma of observations ('gaussian'). \
+For mock observations, you can choose to smear according to the average \
+spread in parameters from current GW observations ('gwevents'), or use a gaussian \
+with an SNR-dependent sigma ('snr'). Default=None.")
 argp.add_argument("-p", "--params", nargs="+", default="mchirp", help=\
 "Specifies the parameters you wish to use in the inference. Default=mchirp.")
 argp.add_argument("-sm", "--spinmag", type=str, help="Define the spin \
@@ -113,6 +115,16 @@ if not gwobs and not args.Nobs:
     raise ValueError("You need to specify and number of observations to be \
 drawn from the 'true' model if not using GW observations!")
 
+# check that valid measurement uncertainty is specified
+if gwobs:
+    if args.uncertainty not in ["gaussian", "posteriors"]:
+        raise ValueError("Unspecified measurement uncertainty procedure when using GW \
+observations: {0:s}".format(args.measurement_uncertainty))
+else:
+    if args.uncertainty not in ["gwevents", "snr"]:
+        raise ValueError("Unspecified measurement uncertainty procedure when using mock \
+observations: {0:s}".format(args.measurement_uncertainty))
+
 # parse the branching ratio values and check for errors
 if not gwobs:
     betas = [float(x) for x in args.beta]
@@ -164,7 +176,7 @@ if VERBOSE:
 if gwobs:
     model0=None
     obsdata, events = gw_obs.generate_observations(params, args.gwpath, \
-                                            args.Nsamps, args.smear)
+                                            args.Nsamps, args.uncertainty)
     if VERBOSE:
         print("Using the following {0:d} GW observations for \
 inference:".format(len(events)))
@@ -176,17 +188,18 @@ else:
         print("Drawing {0:d} observations from the true \
 model...\n".format(int(args.Nobs)))
     for idx, channel in enumerate(model0):
-        # The floors and ceilings here are a bit hacky but ensure that we have
-        # a total of Nobs samples drawn when Nobs*beta is not an integer
+        # first check that the branching fractions * Nobs are integers
+        if not (args.Nobs*model0[channel]._rel_frac).is_integer():
+            warnings.warn('Number of observations is not divisble by branching fractions, this may result in drawing a number of samples slighty different than what was specified!')
         if idx==0:
-            Nobs_per_channel = int(np.floor(args.Nobs * model0[channel]._rel_frac))
+            Nobs_per_channel = int(np.round(args.Nobs * model0[channel]._rel_frac))
             obsdata = model0[channel].generate_observations(Nobs_per_channel, \
-                                                args.Nsamps, args.smear)
+                                                args.Nsamps, args.uncertainty)
         else:
-            Nobs_per_channel = int(np.ceil(args.Nobs * model0[channel]._rel_frac))
+            Nobs_per_channel = int(np.round(args.Nobs * model0[channel]._rel_frac))
             obsdata = np.concatenate((obsdata, \
                   model0[channel].generate_observations(Nobs_per_channel, \
-                                            args.Nsamps, args.smear)))
+                                            args.Nsamps, args.uncertainty)))
 
 
 # Plot the KDEs and observations

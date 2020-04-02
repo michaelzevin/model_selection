@@ -16,6 +16,6 @@ python /Users/michaelzevin/research/github/model_selction/spins/model_select \
 -w pdet_designnetwork \
 -S \
 -b 0.5 0.2 0.3 \
-#-s gaussian \
+-u gaussian \
 #-E
 #--name ${model0}_${beta}_${Nobs} \
