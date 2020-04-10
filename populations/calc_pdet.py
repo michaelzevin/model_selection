@@ -51,8 +51,7 @@ _names = ['midhighlatelow','midhighlatelow_network','design','design_network']
 
 ### Argument handling
 argp = argparse.ArgumentParser()
-argp.add_argument("--input-file", type=str, required=True, help="Path to infinite-sensitivity population models.")
-argp.add_argument("--output-file", type=str, required=True, help="Path to save models with detection weights.")
+argp.add_argument("--file-path", type=str, required=True, help="Path to population models that need detection weights.")
 argp.add_argument("--psd-path", type=str, required=True, help="Path to directory  with PSD files, saved in same format as Observing Scenarios data release.")
 argp.add_argument("--Ntrials", type=int, default=1000, help="Define the number of monte carlo trails used for calculating the average SNR. Default=1000")
 argp.add_argument("--multiproc", type=int, default=1, help="Number of cores you want to use. Default=1")
@@ -71,7 +70,7 @@ def find_submodels(name, obj):
     if isinstance(obj, h5py.Dataset):
         models.append(name.rsplit('/', 1)[0])
 
-f = h5py.File(args.input_file, 'r')
+f = h5py.File(args.file_path, 'r')
 f.visititems(find_submodels)
 # get all unique models
 models = sorted(list(set(models)))
@@ -79,9 +78,9 @@ f.close()
 
 
 for model in models:
-    channel, smdl = tmp.split('/', 1)
+    channel, smdl = model.split('/', 1)
     print("Calculating weights for model: {0:s}, channel: {1:s}".format(channel, smdl))
-    pop = pd.read_hdf(args.input_file, key=model)
+    pop = pd.read_hdf(args.file_path, key=model)
 
     # --- detector weights
     # loop over ifo configurations and sensitivities for calculating different pdet
@@ -118,6 +117,6 @@ for model in models:
         pop[name] = results
 
     # save pop model
-    pop.to_hdf(args.output_file, key=model, mode='a')
+    pop.to_hdf(args.file_path, key=model, mode='a')
 
 

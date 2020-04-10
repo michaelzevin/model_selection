@@ -23,28 +23,37 @@ _VALID_SPIN_DISTR = {
 models = {}
 kde_models = {}
 
-def get_models(dirpath, params, spin_distr=None, weighting=None, **kwargs):
+def get_models(file_path, params, spin_distr=None, weighting=None, **kwargs):
     """
-    Call this to get all the models and submodels living in :dirpath:, as well 
-    as KDEs of these models, packed inside of dictionaries labelled in the 
-    dict structure models[model][channel]. Will first look for :params: as 
-    series in the dataframe. If they are not present, it will try to construct 
+    Call this to get all the models and submodels, as well
+    as KDEs of these models, packed inside of dictionaries labelled in the
+    dict structure models[channel][smdl]. Will first look for :params: as
+    series in the dataframe. If they are not present, it will try to construct
     these parameters if the valid transformations are present in transforms.py.
 
-    If chieff is one of the :params: for inference and spin magnitudes are not 
-    provided, this function will first check if :spin_distr: is provided and 
-    if so, will generate spin magnitudes and calculate chieff using these 
+    If chieff is one of the :params: for inference and spin magnitudes are not
+    provided, this function will first check if :spin_distr: is provided and
+    if so, will generate spin magnitudes and calculate chieff using these
     spins and the m1/m2 specified in the dataframes.
     """
 
     # --- Read in the models, parse the inference parameters
     if VERBOSE:
         print("\nReading models and applying transformations...\n")
-    model_files = [os.path.join(dirpath, f) for f in os.listdir(dirpath)]
-    channels = list(h5py.File(model_files[0], "r").keys())
+    f = h5py.File(file_path, "r")
+    channels = list(f.keys())
 
-    # all models should be saved as hdf files living at :dirpath: with the 
-    # channels as keys
+    # all models should be saved in 'file_path' in a hierarchical structure, with the channel being the top group
+
+
+    import pdb; pdb.set_trace()
+    for channel in channels:
+        models[channel] = {}
+        base_smdls = 
+
+
+
+
     for mdl_file in os.listdir(dirpath):
         mdl_name = mdl_file.split('.')[0]
         models[mdl_name] = {}
