@@ -219,7 +219,7 @@ def gen_redshifts_unicomvol(n=1, z_max=3):
         randDc = (3./(4*np.pi)*randVc)**(1./3)
         zs.append(z_at_value(cosmo.comoving_distance, randDc))
     return np.asarray(zs)
-    
+
 
 
 # Detection probability function

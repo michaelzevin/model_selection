@@ -20,7 +20,7 @@ cosmo = cosmology.Planck15
 # Need to ensure all parameters are normalized over the same range
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,5)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
-_snrscale_sigmas = {"mchirp": 0.08, "eta": 0.21, "chieff": 0.1, "Theta": 0.21}
+_snrscale_sigmas = {"mchirp": 0.08, "eta": 0.21, "chieff": 0.14, "Theta": 0.21}
 _KDE_maxsamps = int(1e4)
 
 """
@@ -212,8 +212,7 @@ but cannot find this column in the samples datafarme!")
 
         elif measurement_uncertainty == "snr":
             # Follow procedures from Fishbach et al. 2018, Farr et al. 2019
-            # Need both chirp mass and redshift to use this method!!!
-            # FIXME we want this to work when we aren't using these parameters for inference!
+            # Need chirp mass, q, and redshift to use this method!!!
             params = list(self._samples.keys())
             for p in ['mchirp','q','z']:
                 if p not in params:
@@ -274,7 +273,6 @@ but cannot find this column in the samples datafarme!")
                     if param=='z':
                         obsdata[idx, :, pidx] = z_obs
 
-            import pdb; pdb.set_trace()
             return obsdata
 
 
