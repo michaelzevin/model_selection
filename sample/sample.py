@@ -3,6 +3,9 @@ import numpy as np
 import scipy as sp
 from scipy.stats import dirichlet
 import pandas as pd
+from functools import reduce
+import operator
+import pdb
 
 import emcee
 from emcee import EnsembleSampler
@@ -17,7 +20,7 @@ _likelihood = 'emcee_lnlike'
 _posterior = 'emcee_lnpost'
 
 _nwalkers = 16
-_nsteps = 10000
+_nsteps = 2000
 _fburnin = 0.2
 
 """
@@ -28,19 +31,34 @@ class Sampler(object):
     """
     Sampler class.
     """
-    def __init__(self, model_names, channels, **kwargs):
+    def __init__(self, model_names, **kwargs):
+
+        # Store the number of population hyperparameters and formation channels
+        hyperparams = list(set([x.split('/', 1)[1] for x in model_names]))
+        Nhyper = np.max([len(x.split('/')) for x in hyperparams])
+        channels = sorted(list(set([x.split('/')[0] for x in model_names])))
 
         # construct dict that relates submodels to their index number
+        submodels_dict = {}
+        ctr=0
+        while ctr < Nhyper:
+            submodels_dict[ctr] = {}
+            hyper_set = sorted(list(set([x.split('/')[ctr] for x in hyperparams])))
+            for idx, model in enumerate(hyper_set):
+                submodels_dict[ctr][idx] = model
+            ctr += 1
+
+        # note that ndim is (Nchannels-1) + Nhyper for the model indices
+        ndim = (len(channels)-1) + Nhyper
+
+        # store as attributes
+        self.Nhyper = Nhyper
         self.model_names = model_names
         self.channels = channels
-
-        submodels_dict = {}
-        for idx, model in enumerate(model_names):
-            submodels_dict[idx] = model
+        self.ndim = ndim
         self.submodels_dict = submodels_dict
 
-        # note that ndim is (Nchannels-1) + 1 for the model index
-        self.ndim = (len(channels)-1) + 1
+
         # kwargs
         self.sampler_name = kwargs['sampler'] if 'sampler' in kwargs \
                                                             else _sampler
@@ -74,35 +92,29 @@ posteriors!".format(self.posterior_name))
         self.nsteps = kwargs['nsteps'] if 'nsteps' in kwargs else _nsteps
         self.fburnin = kwargs['fburnin'] if 'fburnin' in kwargs else _fburnin
 
-        # if we want to sample in a single submodel, save that submodel index
-        self.smdl_name = kwargs['smdl'] if 'smdl' in kwargs else None
-
 
     def sample(self, kde_models, obsdata):
         """
         Initialize and run the sampler
         """
 
-        # Set up initial point for the walkers
+        # --- Set up initial point for the walkers
         p0 = np.empty(shape=(self.nwalkers, self.ndim))
+
+        # first, for the population hyperparameters
+        for idx in np.arange(self.Nhyper):
+            p0[:,idx] = np.random.uniform(0, len(self.submodels_dict[idx]), size=self.nwalkers)
+        # second, for the branching fractions (we have Nchannel-1 betasin the inference because of the implicit constraint that Sum(betas) = 1
         _concentration = np.ones(len(self.channels))
-        p0[:,:] = dirichlet.rvs(_concentration, p0.shape[0])
+        beta_p0 =  dirichlet.rvs(_concentration, p0.shape[0])
+        p0[:,self.Nhyper:] = beta_p0[:,:-1]
 
-        # we overwrite one of the betas with the model index; we only use 
-        # Nchannel-1 betas in the inference because of the implicit constraint 
-        # that Sum(betas) = 1
-        p0[:,0] = np.random.uniform(0, len(self.model_names), \
-                                                    size=self.nwalkers)
-
-        # do the sampling
-        posterior_args = [obsdata, kde_models, self.submodels_dict, \
-             self.model_names, self.channels, _concentration, self.smdl_name]
+        # --- Do the sampling
+        posterior_args = [obsdata, kde_models, self.submodels_dict, self.channels, _concentration]
         if VERBOSE:
             print("Sampling...")
-        sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, \
-                                                       args=posterior_args)
-        for idx, result in enumerate(sampler.sample(p0, \
-                                                    iterations=self.nsteps)):
+        sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, args=posterior_args)
+        for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)):
             if VERBOSE:
                 if (idx+1) % 50 == 0:
                     sys.stderr.write("\r  {0}% (N={1})".\
@@ -117,58 +129,51 @@ posteriors!".format(self.posterior_name))
         lnprb = sampler.lnprobability[:,burnin_steps:]
 
         # synthesize last betas, since they sum to unity
-        last_betas = (1.0-np.sum(samples[...,1:], axis=2))
+        last_betas = (1.0-np.sum(samples[...,self.Nhyper:], axis=2))
         last_betas = np.expand_dims(last_betas, axis=2)
         samples = np.concatenate((samples, last_betas), axis=2)
 
         self.samples = samples
         self.lnprb = lnprb
-        # FIXME look into ensemble sampler evidence calculations more
-        #evidence = sampler.thermodynamic_integration_log_evidence(fburnin=self.fburnin)
-        #self.lnZ, self.dlnZ = evidence[0], evidence[1]
-
 
 
 
 # --- Define the likelihood and prior
 
-def lnp(x, model_names, _concentration):
+def lnp(x, submodels_dict, _concentration):
     """
     Log of the prior. 
     Returns logL of -inf for points outside, uniform within. 
     Is conditional on the sum of the betas being one.
     """
-    model = x[0]
-    betas_tmp = np.asarray(x[1:])
-    betas_tmp = np.append(betas_tmp, 1-np.sum(betas_tmp))
+    # first get prior on the hyperparameters, flat between the model indices
+    for hyper_idx in list(submodels_dict.keys()):
+        hyperparam = x[hyper_idx]
+        if ((hyperparam < 0) | (hyperparam > len(submodels_dict[hyper_idx]))):
+            return -np.inf
 
-    if np.floor(model) not in range(0, len(model_names)):
-        return -np.inf
-
+    # second, get the prior on the betas as a Dirichlet prior
+    betas_tmp = np.asarray(x[len(submodels_dict):])
+    betas_tmp = np.append(betas_tmp, 1-np.sum(betas_tmp)) #synthesize last beta
     if np.any(betas_tmp < 0.0):
         return -np.inf
-
-    if np.sum(betas_tmp) > 1.0:
+    if np.sum(betas_tmp) != 1.0:
         return -np.inf
 
     # Dirchlet distribution prior for betas
     return dirichlet.logpdf(betas_tmp, _concentration)
 
 
-def lnlike(x, data, kde_models, submodels_dict, channels, smdl_name):
+def lnlike(x, data, kde_models, submodels_dict, channels):
     """
     Log of the prior x likelihood. 
     Selects on model, then tests beta.
     """
-    # if sampling a specific submodel only, override the sampler
-    if smdl_name:
-        for idx, mdl in submodels_dict.items():
-            if mdl==smdl_name:
-                model_idx = idx
-    else:
-        model_idx = int(np.floor(x[0]))
-    model = submodels_dict[model_idx]
-    betas_tmp = np.asarray(x[1:])
+    model_list = []
+    for hyper_idx in list(submodels_dict.keys()):
+        model_list.append(submodels_dict[hyper_idx][int(np.floor(x[hyper_idx]))])
+
+    betas_tmp = np.asarray(x[len(submodels_dict):])
     betas_tmp = np.append(betas_tmp, 1-np.sum(betas_tmp))
 
     # Likelihood
@@ -176,25 +181,26 @@ def lnlike(x, data, kde_models, submodels_dict, channels, smdl_name):
 
     # Iterate over channels in this submodel, return cached values
     for channel, beta in zip(channels, betas_tmp):
-        smdl = kde_models[model][channel]
+        model_list_tmp = model_list.copy()
+        model_list_tmp.insert(0,channel)
+        smdl = reduce(operator.getitem, model_list_tmp, kde_models)
         prob += beta * smdl(data)
 
     return np.log(prob).sum()
 
 
-def lnpost(x, data, kde_models, submodels_dict, model_names, channels, \
-                                                _concentration, smdl_name):
+def lnpost(x, data, kde_models, submodels_dict, channels, _concentration):
     """
     Combines the prior and likelihood to give a log posterior probability 
     at a given point
     """
     # Prior
-    log_prior = lnp(x, model_names, _concentration)
+    log_prior = lnp(x, submodels_dict, _concentration)
     if not np.isfinite(log_prior):
         return log_prior
 
     # Likelihood
-    log_like = lnlike(x, data, kde_models, submodels_dict, channels, smdl_name)
+    log_like = lnlike(x, data, kde_models, submodels_dict, channels)
 
     return log_like + log_prior
 

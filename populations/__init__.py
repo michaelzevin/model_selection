@@ -85,7 +85,7 @@ but cannot find this column in the samples datafarme!")
         # also need to scale pdf by parameter range, so save this
         pdf_scale = scale_to_unity(self._param_bounds)
 
-        # Get the KDE objects, specify functions for pdf and logpdf. 
+        # Get the KDE objects, specify function for pdf
         # This custom KDE handles multiple dimensions, bounds, and weights
         # and takes in samples (Ndim x Nsamps)
         _kde = Bounded_Nd_kde(samples.T, weights=weights, \
@@ -273,7 +273,7 @@ but cannot find this column in the samples datafarme!")
                     if param=='z':
                         obsdata[idx, :, pidx] = z_obs
 
-            return obsdata
+        return obsdata
 
 
 

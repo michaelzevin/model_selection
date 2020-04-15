@@ -9,6 +9,10 @@ import sys
 import argparse
 import h5py
 import warnings
+from functools import reduce
+import operator
+from copy import deepcopy
+import pdb
 
 import numpy as np
 import pandas as pd
@@ -24,8 +28,9 @@ MAKE_PLOTS=True
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
 argp.add_argument("-f", "--file-path", type=str, required=True, help="Path to where the population models are living. Models should be stored in hdf5 format, with the channel as the base group, and model parameters as subgroups (e.g., 'CE/chi01/alpha0.5').")
-argp.add_argument("-m", "--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. If 'gwobs', will use the actual GW observations.")
+argp.add_argument("-m", "--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. When there are multiple parameters in the submodel, separate with '/' (e.g., 'chi00/alpha5'). If 'gwobs', will use the actual GW observations.")
 argp.add_argument("-gw", "--gwpath", type=str, help="Sets the path for where the GW samples are living. Necessary if model0='gwobs'. Default=None.")
+argp.add_argument("-c", "--specific-channels", nargs="+", help="Specifies the formation channels you wish to consider in the inference. If 'None', will use all channels in the hdf5 file. Default=None.")
 argp.add_argument("-b", "--beta", nargs="*", help="Sets the branching fraction for mock observations. The number provided is the fraction of systems that come from each channel in alphabetical order. Must be set if gwobs not used. Can provide Nchannel values (which must sum to unity) or Nchannel-1 values (which must be less than 1.0, and the last branching fraction is inferred). Default=None.")
 argp.add_argument("-p", "--params", nargs="+", default="mchirp", help="Specifies the parameters you wish to use in the inference. Default=mchirp.")
 argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations to be taken from the mixture model. Must be set if gwobs not used. Default=None.")
@@ -44,19 +49,25 @@ args = argp.parse_args()
 if args.random_seed:
     np.random.seed(args.random_seed)
 
+# --- Useful functions for accessing items in dictionary
+def getFromDict(dataDict, mapList):
+    return reduce(operator.getitem, mapList, dataDict)
+def setInDict(dataDict, mapList, value):
+    getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
+
 # --- Load in models/kdemodels into dict structure: models[model][channel]
-models, kde_models = bbh_models.get_models(args.file_path, args.params, \
-                        args.spinmag, weighting=args.weights)
-model_names = list(models.keys())
+model_names, models, kde_models, kde_models_unweighted = bbh_models.get_models(args.file_path, args.specific_channels, args.params, args.spinmag, weighting=args.weights)
 model_names.sort()
-channels = list(models[list(models.keys())[0]].keys())
-channels.sort()
+channels = sorted(list(models.keys()))
 params = args.params
+hyperparams = list(set([x.split('/', 1)[1] for x in model_names]))
+Nhyper = np.max([len(x.split('/')) for x in hyperparams])
 
 # see if we're using GW observations
 gwobs = True if args.model0=='gwobs' else False
 
 if VERBOSE:
+    print("")
     print("Formation channels: " + ", ".join(channels))
     print("Astrophysical models: " + ", ".join(model_names))
     print("Parameters for inference: " + ", ".join(params))
@@ -66,80 +77,90 @@ if VERBOSE:
 
 # --- Perform some checks to make sure things are compatible
 
-# check to see if the models have the same formation channels
-for model in model_names:
-    if set(models[model].keys()) != set(channels):
-        raise ValueError("Different models have differing formation channels! \
-Check your hdf keys...")
-
 # check that a value of beta is provided if gwobs not specified
 if not gwobs:
     if not args.beta:
-        raise ValueError("You need to either specify branching fractions or \
-choose to instead use GW observations!")
+        raise ValueError("You need to either specify branching fractions or choose to instead use GW observations!")
 
 # check that the true model provided is valid if gwobs not specified
-if (args.model0 not in model_names and not gwobs):
-    raise ValueError("The true model you specified ({0:s}) is not one of the \
-models in {1:s} directory!".format(args.model0, args.dirpath))
+for channel in channels:
+    channel_smdls = [s.split('/', 1)[1] for s in model_names if channel+'/' in s]
+    if (args.model0 not in channel_smdls and not gwobs):
+        raise ValueError("The true model you specified ({0:s}) is not one of the models in {1:s} directory!".format(args.model0, args.file_path))
+
+# ensure that the number of hyperparameters in each channel is the same depth
+for channel in channels:
+    channel_smdls = [x for x in model_names if channel+'/' in x]
+    Nlevels_in_channel = [len(x.split('/')) for x in channel_smdls]
+    if not all(x == Nlevels_in_channel[0] for x in Nlevels_in_channel):
+        raise ValueError("The formation channel '{0:s}' does not have the same hierarchical levels of hyperparameters across submodels: {1:s}".format(channel, ','.join(channel_smdls)))
+
+# ensure that models at each level are consistent across formation channels
+i=1 #start at 1, which will be the highest-level hyperparameter since the formation channel is the first parameter
+while i <= Nhyper:
+    hyper_set = list(set([x.split('/')[i] for x in model_names]))
+    for channel in channels:
+        channel_smdls = [x for x in model_names if channel+'/' in x]
+        Nlevels_in_channel = [len(x.split('/')) for x in channel_smdls][0]-1
+        if Nlevels_in_channel <= i:
+            channel_set = [x.split('/')[i] for x in channel_smdls]
+            if sorted(hyper_set) != sorted(channel_set):
+                raise ValueError("At hyperparameter level {0:d}, the formation channel {1:s} does not have the same hyperparameters as the rest of the models (all models: {2:s}, {1:s}: {3:s}".format(i, channel, ','.join(hyper_set), ','.join(channel_set)))
+    i += 1
 
 # check that Nobs was specified if not using gwobs
 if not gwobs and not args.Nobs:
-    raise ValueError("You need to specify and number of observations to be \
-drawn from the 'true' model if not using GW observations!")
+    raise ValueError("You need to specify and number of observations to be drawn from the 'true' model if not using GW observations!")
 
 # check that valid measurement uncertainty is specified
 if gwobs:
     if args.uncertainty not in ["gaussian", "posteriors"]:
-        raise ValueError("Unspecified measurement uncertainty procedure when using GW \
-observations: {0:s}".format(args.measurement_uncertainty))
+        raise ValueError("Unspecified measurement uncertainty procedure when using GW observations: {0:s}".format(args.uncertainty))
 else:
     if args.uncertainty not in ["gwevents", "snr"]:
-        raise ValueError("Unspecified measurement uncertainty procedure when using mock \
-observations: {0:s}".format(args.measurement_uncertainty))
+        raise ValueError("Unspecified measurement uncertainty procedure when using mock observations: {0:s}".format(args.uncertainty))
 
 # parse the branching ratio values and check for errors
 if not gwobs:
     betas = [float(x) for x in args.beta]
     if (len(betas) != len(channels)) and (len(betas) != len(channels)-1):
-        raise ValueError("Must specify {0:d} or {1:d} branching fractions, \
-you provided {2:d}!".format(len(channels)-1, len(channels), len(betas)))
+        raise ValueError("Must specify {0:d} or {1:d} branching fractions, you provided {2:d}!".format(len(channels)-1, len(channels), len(betas)))
     if np.sum(betas) > 1.0:
-        raise ValueError("Branching fractions must sum to less than or equal \
-to 1.0, yours sum to {0:0.2f}!".format(np.sum(betas)))
+        raise ValueError("Branching fractions must sum to less than or equal to 1.0, yours sum to {0:0.2f}!".format(np.sum(betas)))
     if (len(betas) == len(channels)) and (np.sum(betas) != 1.0):
-        raise ValueError("If you provide the same number of branching \
-fractions as channels, they must sum to exactly 1.0 (yours sum to \
-{0:0.2f})!".format(np.sum(betas)))
+        raise ValueError("If you provide the same number of branching fractions as channels, they must sum to exactly 1.0 (yours sum to {0:0.2f})!".format(np.sum(betas)))
 
     if len(betas) != len(channels):
         betas.append(1.0 - np.sum(betas))
 
-# --- If model0 specified, save relative fractions for each KDE model, 
-# and store model0
+# --- If model0 specified, save relative fractions for each KDE model, and store model0
 if not gwobs:
     if VERBOSE:
         print("Saving relative fractions and storing true model...\n")
 
-    for model in model_names:
-        # since channels are sorted alphabetically, the first channel has 
-        # branching fraction beta
-        for idx, (channel, beta) in enumerate(zip(channels, betas)):
-            kde_models[model][channel].rel_frac(beta)
-            if (model == args.model0):
-                model0 = kde_models[model]
+    model0 = {}
+    # since channels are sorted alphabetically, branching fractions are defined in the same order
+    for idx, channel in enumerate(channels):
+        channel_mdls = [x for x in model_names if channel+'/' in x]
+        for model in channel_mdls:
+            smdl = model.split('/',1)[1]
+            beta = betas[channels.index(channel)]
+            # store relative fraction
+            getFromDict(kde_models, model.split('/')).rel_frac(beta)
+            # print info about model0
+            if (smdl == args.model0):
+                model0[channel] = getFromDict(kde_models, model.split('/'))
                 if VERBOSE:
                     if idx==0:
-                        print("'{0:s}' set as true model".format(model))
+                        print("'{0:s}' set as true model".format(smdl))
                         print("  model range:")
                     print("    {0:s} (beta={1:0.2f})".format(channel, beta))
                     for param in args.params:
                         print("      {0:s}: {1:0.2f} - {2:0.2f}".format(param,\
-                                models[args.model0][channel][param].min(),\
-                                models[args.model0][channel][param].max()))
+                                getFromDict(models, model.split('/'))[param].min(),\
+                                getFromDict(models, model.split('/'))[param].max()))
                     if idx==len(betas)-1:
                         print("")
-
 
 # --- Generate observations ([observations, params, samples])
 if VERBOSE:
@@ -177,9 +198,10 @@ model...\n".format(int(args.Nobs)))
 
 # Plot the KDEs and observations
 if MAKE_PLOTS==True:
-    print("Plotting marginalized KDE models...\n")
-    msplot.plot_1D_kdemodels(kde_models, params, obsdata, model0, \
-                name=args.name, plot_obs=True, plot_obs_samples=False)
+    print("Plotting marginalized KDE models...")
+    msplot.plot_1D_kdemodels(model_names, kde_models, params, obsdata, model0, \
+                name=args.name, fixed_vals=[], plot_obs=True, plot_obs_samples=False)
+    print("")
 
 
 # --- Freeze sample evaluations in each model. 
@@ -190,75 +212,82 @@ if MAKE_PLOTS==True:
 if VERBOSE:
     print("Freezing sample evaluations in their respective models...")
 for model in model_names:
-    for channel in channels:
-        if VERBOSE:
-            print("  {0:s}, {1:s}".format(model, channel))
-        kde_models[model][channel].freeze(obsdata)
+    if VERBOSE:
+        print("  {0:s}".format(model))
+    getFromDict(kde_models, model.split('/')).freeze(obsdata)
 if VERBOSE:
     print("Done freezing KDE evaluations of observations!\n")
 
 
 
+# ---  Copy models so that they all have the same levels of hyperparameters
+
+# FIXME: Once I have the alpha models, do this!
+
 # --- Do the sampling!
 
-sampler = sample.Sampler(model_names, channels)
+sampler = sample.Sampler(model_names)
 sampler.sample(kde_models, obsdata)
 samples = sampler.samples
 lnprb = sampler.lnprb
+submodels_dict = sampler.submodels_dict
+
+# take the floor of the hyperparameters to get the model indices
+for hyper_idx in list(submodels_dict.keys()):
+    samples[:,:,hyper_idx] = np.floor(samples[:,:,hyper_idx]).astype(int)
 
 
 # Plot samples and histograms of betas per model
 if MAKE_PLOTS==True:
     print("Plotting samples...\n")
-    msplot.plot_samples(samples, model_names, channels, model0, name=args.name)
+    msplot.plot_samples(samples, submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=0)
 
 
 # reshape to have all steps from all walkers in a single dimension
 # (note that we added a dim for the last beta that we synthesized)
-samples = samples.reshape((sampler.nwalkers * sampler.Nsteps_final, \
-                                sampler.ndim+1))
-lnprb = lnprb.reshape((sampler.nwalkers * sampler.Nsteps_final))
+samples = samples.reshape((samples.shape[0] * samples.shape[1], \
+                                samples.shape[2]))
+lnprb = lnprb.reshape((lnprb.shape[0] * lnprb.shape[1]))
 
-# Parse out the model index
-smdl_counts = np.floor(samples[:,0]).astype(int)
 
-# Print summary info about the sampling
+# --- Print summary info about the sampling
 if VERBOSE:
     print("Sample breakdown:")
-    for smdl_idx, smdl in enumerate(model_names):
-        counts = len(smdl_counts[smdl_counts == smdl_idx])
-        locs = np.where(smdl_counts==smdl_idx)
-        recovered_betas = {}
+    recovered_vals = {}
+    smdls = list(set([x.split('/',1)[1] for x in model_names]))
+    for smdl in sorted(smdls):
+        recovered_vals[smdl] = {}
+        hyperparams = smdl.split('/')
+        # loop over hyperparams to get matching samples
+        for idx, param in enumerate(hyperparams):
+            hyper_idx = list(submodels_dict[idx].keys())[list(submodels_dict[idx].values()).index(param)]
+            if idx==0:
+                matching_samps = samples[samples[:,idx] == hyper_idx]
+            else:
+                matching_samps = matchin_samps[matching_samps[:,idx] == hyper_idx]
+        # get counts in this model
+        counts = matching_samps.shape[0]
+        recovered_vals[smdl]['counts'] = counts
+        # get betas for this model from each channel
+        recovered_vals[smdl]['betas'] = {}
         for cidx, channel in enumerate(channels):
-            if len(locs[0]) > 0:
-                beta = samples[:,(cidx+1)][locs].mean()
-                beta = round(beta, 2)
+            # append beta values for this model
+            if counts > 0:
+                beta = matching_samps[:,Nhyper+cidx]
+                beta = round(np.mean(beta), 2)
             else:
                 beta = np.nan
-            recovered_betas[channel] = beta
-        print("  Model {0:s} ({1:d}): {2:d} samples, \
-betas={3}".format(smdl, smdl_idx, counts, list(recovered_betas.items())))
+            recovered_vals[smdl]['betas'][channel] = beta
+
+    # print everything
+    for smdl in sorted(smdls):
+        counts = recovered_vals[smdl]['counts']
+        betas = recovered_vals[smdl]['betas']
+        print("  Model {0:s}: {1:d} samples, betas={2}".format(smdl, counts, list(betas.items())))
     print("")
 
 
-# --- Calculate the evidence, if specified
-if args.evidence:
-    if VERBOSE:
-        print("Calculating evidence for each submodel...")
-    smdl_samplers={}
-    for smdl in model_names:
-        if VERBOSE:
-            print("Model {0:s}:".format(smdl))
-        evidence_sampler = sample.Sampler(model_names, channels, smdl=smdl)
-        evidence_sampler.sample(kde_models, obsdata)
-        smdl_samplers[smdl] = evidence_sampler
-        if VERBOSE:
-            print("  {0:s} log evidence: {1:0.3f}\n".format(smdl,\
-                               evidence_sampler.lnZ))
-
-
-
-
+pdb.set_trace()
 # --- Save samples
 
 if args.save_samples:

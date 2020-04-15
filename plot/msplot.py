@@ -5,6 +5,9 @@ Plotting functions so we don't bog down the executable
 import numpy as np
 import pandas as pd
 import os
+import pdb
+from functools import reduce
+import operator
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -22,38 +25,50 @@ plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 _param_bounds = {"mchirp": (0,70), "q": (0,1), "chieff": (-1,1), "z": (0,3)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
 "chieff": r"$\chi_{\rm eff}$", "z": r"$z$"}
-_Nsamps = 10000
+_Nsamps = 1000
+
+# --- Useful functions for accessing items in dictionary
+def getFromDict(dataDict, mapList):
+    return reduce(operator.getitem, mapList, dataDict)
+def setInDict(dataDict, mapList, value):
+    getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
 
 
-def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, \
-                                plot_obs=False, plot_obs_samples=False):
+def plot_1D_kdemodels(model_names, kde_models, params, obsdata, model0, name=None, fixed_vals=[], plot_obs=False, plot_obs_samples=False):
     """
-    Plots all the KDEs for each channel in each model, as well as the *true* 
-    model described by the input branching fraction.
+    Plots all the KDEs for each channel in each model, as well as the *true* model described by the input branching fraction.
+    If more than one population parameter is being considered, specify in list 'fixed_vals' (e.g., ['alpha1']).
     """
-    fig, axs = plt.subplots(len(kde_models), len(params), \
-                        figsize=(6*len(params), 5*len(kde_models)))
-    axs = axs.reshape(len(kde_models), len(params))
-
-    model_names = list(kde_models.keys())
+    # filter to only get models for one population parameter
+    if fixed_vals:
+        for fixed_val in fixed_vals:
+            model_names = [x for x in model_names if fixed_val in x]
     model_names.sort()
 
+    channels = list(kde_models.keys())
+    Nchannels = int(len(kde_models))
+    Nparams = int(len(params))
+    Nsbmdls = int(len(model_names)/len(kde_models))
+
+    fig, axs = plt.subplots(Nsbmdls, Nparams, figsize=(6*Nparams, 5*Nsbmdls))
+
     # loop over all models...
-    for idx, model in enumerate(model_names):
-        print('   '+model)
+    print('   plotting population models...')
+    for cidx, channel in enumerate(channels):
+        channel_smdls = [x for x in model_names if channel+'/' in x]
+        for idx, model in enumerate(channel_smdls):
+            kde = getFromDict(kde_models, model.split('/'))
 
-        # loop over all parameters...
-        for pidx, param in enumerate(params):
-            if axs.ndim == 1:
-                ax = axs[idx]
-            else:
-                ax = axs[idx,pidx]
+            # if this kde is in model0, allocate array for samples
+            if model0 and (kde.label == model0[channel].label):
+                channel_model0_samples = np.zeros(shape=(int(kde._rel_frac*_Nsamps),Nparams))
 
-            pdf_max = 0
-            # loop over all channels...
-            for cidx, channel in enumerate(kde_models[model]):
-                #print('   '+model, param, channel)
-                kde = kde_models[model][channel]
+            # loop over all parameters...
+            for pidx, param in enumerate(params):
+                if axs.ndim == 1:
+                    ax = axs[idx]
+                else:
+                    ax = axs[idx,pidx]
 
                 # marginalize the kde
                 marg_kde = kde.marginalize([param])
@@ -62,46 +77,55 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, \
                 eval_pts = np.linspace(*_param_bounds[param], 100)
                 eval_pts = eval_pts.reshape(100,1,1)
                 pdf = marg_kde(eval_pts)
-                # hacky way to deal with large spikes in CHE mass ratio
-                if (channel != 'CHE') or (param != 'q'):
-                    pdf_max = pdf.max() if pdf.max() > pdf_max else pdf_max
 
-                # sample the marginalized KDE
-                if model0:
-                    if cidx==0:
-                        combined_samples = marg_kde.sample(int(kde._rel_frac*_Nsamps))
-                    else:
-                        combined_samples = np.concatenate((combined_samples, \
-                                marg_kde.sample(int(kde._rel_frac*_Nsamps))))
+                # if this model is in model0, sample the marginalized KDE
+                if model0 and kde.label == model0[channel].label:
+                    channel_model0_samples[:,pidx] = marg_kde.sample(int(kde._rel_frac*_Nsamps)).flatten()
 
                 # legend label
-                if not model0:
-                    label = channel
-                else:
+                if model0:
                     label = channel+r" ($\beta$={0:0.1f})".format(kde._rel_frac)
+                else:
+                    label = channel
 
                 # plot the kde
                 ax.plot(eval_pts.flatten(), pdf, color=cp[cidx], label=label)
 
-                # format plot
-                ax.set_xlim(*_param_bounds[param])
-                ax.set_ylim(0, pdf_max)
-
-                if idx==len(kde_models)-1:
-                    ax.set_xlabel(_labels_dict[param], fontsize=40)
-                if pidx==0:
-                    ax.set_ylabel(model, fontsize=50)
+                # Format plot
                 if idx==0 and pidx==(len(params)-1):
                     ax.legend(prop={'size':30})
-                if idx==0:
-                    ax.set_title(_labels_dict[param], fontsize=40)
+                if cidx==Nchannels-1:
+                    ax.set_xlim(*_param_bounds[param])
+                    ax.set_ylim(bottom=0)#, top=pdf_max)
+                    if idx==Nsbmdls-1:
+                        ax.set_xlabel(_labels_dict[param], fontsize=40)
+                    if pidx==0:
+                        ax.set_ylabel(model.split('/', 1)[1], fontsize=50)
+                    if idx==0:
+                        ax.set_title(_labels_dict[param], fontsize=40)
 
+
+
+        # append the draws from model0 from all channels
+        if cidx==0:
+            model0_samples = channel_model0_samples
+        else:
+            model0_samples = np.concatenate((model0_samples, channel_model0_samples))
+
+
+    # Plot model0, obsdata, and formatting
+    print('   plotting model0 and observations...')
+    for idx in np.arange(Nsbmdls):
+        for pidx, param in enumerate(params):
+            if axs.ndim == 1:
+                ax = axs[idx]
+            else:
+                ax = axs[idx,pidx]
+            
             # construct combined KDE model and plot
             if model0:
-                combined_samples = pd.DataFrame(combined_samples.flatten(), \
-                                                            columns=[param])
-                combined_kde = KDEModel.from_samples('combined_kde', \
-                                  combined_samples, [param], weighting=None)
+                combined_samples = pd.DataFrame(model0_samples[:,pidx].flatten(), columns=[param])
+                combined_kde = KDEModel.from_samples('combined_kde', combined_samples, [param], weighting=None)
                 eval_pts = np.linspace(*_param_bounds[param], 100)
                 eval_pts = eval_pts.reshape(100,1,1)
                 pdf = combined_kde(eval_pts)
@@ -137,8 +161,10 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, \
                         ax.axvline(np.median(obs[:,pidx]), ymax=0.2, \
                                                color='b', alpha=0.5, zorder=10)
 
+
+    # Titles and saving
     if model0:
-        model0_name = model0[list(model0.keys())[0]].label.split('_')[0]
+        model0_name = model0[channels[0]].label.split('/', 1)[1]
     else:
         model0_name='GW observations'
     plt.suptitle("Sampled model: {0:s}".format(model0_name), fontsize=55)
@@ -152,13 +178,16 @@ def plot_1D_kdemodels(kde_models, params, obsdata, model0, name=None, \
 
 
 
-def plot_samples(samples, model_names, channels, model0, name=None):
+def plot_samples(samples, submodels_dict, model_names, channels, model0, name=None, hyper_idx=0):
     """
     Plots the models that the chains are exploring, and histograms of the 
     branching fraction recovered for each model.
+
+    :hyper_marg_idx: defines the index of the hyperparaeter in submodels_dict
+    you wish to plot, marginalizing over the other parameters
     """
-    # take the floor of the model samples
-    samples[:,:,0] = np.floor(samples[:,:,0])
+
+    Nhyper = len(submodels_dict)
 
     # setup the plots
     fig = plt.figure(figsize=(12,7))
@@ -170,28 +199,29 @@ def plot_samples(samples, model_names, channels, model0, name=None):
 
     # plot the chains moving in beta space, colored by their model
     for chain in samples:
-        for midx, model in enumerate(model_names):
-            smdl_locs = np.argwhere(chain[:,0]==midx)
-            steps = np.arange(len(chain))
+        for midx, model in submodels_dict[hyper_idx].items():
+            smdl_locs = np.argwhere(chain[:,hyper_idx]==midx)[:,0]
+            steps = np.arange(chain.shape[0])
             for cidx, channel in enumerate(channels):
                 ax_chains[cidx].scatter(steps[smdl_locs], \
-                    chain[smdl_locs,cidx+1], color=cp[midx], s=0.5, alpha=0.2)
+                    chain[smdl_locs,cidx+Nhyper], color=cp[midx], s=0.5, alpha=0.2)
 
     # plot the histograms on beta for each model
-    basemdl_samps = len(np.argwhere(samples[:,:,0]==0))
+    # compactify all the chains in samples
+    samples_allchains = np.reshape(samples, (samples.shape[0]*samples.shape[1], samples.shape[2]))
+    basemdl_samps = len(np.argwhere(samples_allchains[:,hyper_idx]==0).flatten())
     h_max = 0
-    for midx, model in enumerate(model_names):
-        smdl_locs = np.argwhere(samples[:,:,0]==midx)
+    for midx, model in submodels_dict[hyper_idx].items():
+        smdl_locs = np.argwhere(samples_allchains[:,hyper_idx]==midx).flatten()
         mdl_samps = len(smdl_locs)
         if basemdl_samps > 0:
             BF = float(mdl_samps)/basemdl_samps
         else:
             BF = float(mdl_samps)
         for cidx, channel in enumerate(channels):
-            h, bins, _ = ax_margs[cidx].hist(samples[smdl_locs[:,0], \
-                smdl_locs[:,1], cidx+1], orientation='horizontal', \
-                histtype='step', color=cp[midx], bins=50, alpha=0.7, \
-                label=model+', BF={0:0.1e}'.format(BF))
+            h, bins, _ = ax_margs[cidx].hist(samples_allchains[smdl_locs, cidx+Nhyper], \
+                orientation='horizontal', histtype='step', color=cp[midx], bins=50, \
+                alpha=0.7, label=model+', BF={0:0.1e}'.format(BF))
             h_max = h.max() if h.max() > h_max else h_max
 
 
@@ -232,7 +262,7 @@ def plot_samples(samples, model_names, channels, model0, name=None):
 
     # title
     if model0:
-        model0_name = model0[list(model0.keys())[0]].label.split('_')[0]
+        model0_name = model0_name = model0[channels[0]].label.split('/', 1)[1]
     else:
         model0_name='GW observations'
     plt.suptitle("True model: {0:s}".format(model0_name), fontsize=40)
