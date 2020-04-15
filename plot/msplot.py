@@ -107,10 +107,11 @@ def plot_1D_kdemodels(model_names, kde_models, params, obsdata, model0, name=Non
 
 
         # append the draws from model0 from all channels
-        if cidx==0:
-            model0_samples = channel_model0_samples
-        else:
-            model0_samples = np.concatenate((model0_samples, channel_model0_samples))
+        if model0:
+            if cidx==0:
+                model0_samples = channel_model0_samples
+            else:
+                model0_samples = np.concatenate((model0_samples, channel_model0_samples))
 
 
     # Plot model0, obsdata, and formatting
