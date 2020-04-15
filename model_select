@@ -114,11 +114,13 @@ if not gwobs and not args.Nobs:
 
 # check that valid measurement uncertainty is specified
 if gwobs:
-    if args.uncertainty not in ["gaussian", "posteriors"]:
-        raise ValueError("Unspecified measurement uncertainty procedure when using GW observations: {0:s}".format(args.uncertainty))
+    valid_uncertainties = ["gaussian", "posteriors"]
+    if args.uncertainty not in valid_uncertainties:
+        raise ValueError("Unspecified measurement uncertainty procedure when using GW observations: '{0:s}' (valid uncertainties: {1:s})".format(args.uncertainty, ', '.join(valid_uncertainties)))
 else:
-    if args.uncertainty not in ["gwevents", "snr"]:
-        raise ValueError("Unspecified measurement uncertainty procedure when using mock observations: {0:s}".format(args.uncertainty))
+    valid_uncertainties = ["gwevents", "snr"]
+    if args.uncertainty not in valid_uncertainties:
+        raise ValueError("Unspecified measurement uncertainty procedure when using mock observations: '{0:s}' (valid uncertainties: {1:s})".format(args.uncertainty, ', '.join(valid_uncertainties)))
 
 # parse the branching ratio values and check for errors
 if not gwobs:
@@ -287,7 +289,6 @@ if VERBOSE:
     print("")
 
 
-pdb.set_trace()
 # --- Save samples
 
 if args.save_samples:
@@ -312,20 +313,33 @@ if args.save_samples:
     bsgrp.attrs["model0_params"] = info
 
     # add argument attribute
-    arguments = sys.argv[1:]
-    arguments = [x.encode('utf-8') for x in arguments]
+    arguments = []
+    for key, val in vars(args).items():
+        arguments.append('{}: {}'.format(key,val))
     bsgrp.attrs["args"] = arguments
 
-    # save observations dataset
-    bsgrp.create_dataset("observations", data=obsdata)
-
-    # create subgroup for samples
-    group = bsgrp.create_group("samples")
-    labels = ["model_idx"] + ["beta_%s" % c for c in channels]
-    group.attrs["inference_params"] = labels
-
-    # synthesize last beta, since they sum to unity
-    for lbl, d in zip(labels, samples.T):
-        group.create_dataset(lbl, data=d)
+    # add submodels_dict attribute
+    for hyper_idx in submodels_dict.keys():
+        conversion = []
+        for key, val in submodels_dict[hyper_idx].items():
+            conversion.append(str(key)+': '+str(val))
+        bsgrp.attrs["p"+str(hyper_idx)+'_dict'] = conversion
     hfile.close()
 
+    # save observations as dataframe
+    df = pd.DataFrame()
+    for idx, obs in enumerate(obsdata):
+        df = df.append(pd.DataFrame(obs, columns=params, index=(idx*np.ones(len(obs)).astype(int))))
+    df.to_hdf(fname, key='model_selection/obsdata')
+
+    # save samples as dataframe
+    columns = []
+    convert_dict = {}
+    for hyper_idx in submodels_dict.keys():
+        columns.append('p'+str(hyper_idx))
+        # save column names to convert model indices to ints
+        convert_dict['p'+str(hyper_idx)] = int
+    for channel in channels:
+        columns.append('beta_'+channel)
+    df = pd.DataFrame(samples, columns=columns).astype(convert_dict)
+    df.to_hdf(fname, key='model_selection/samples')
