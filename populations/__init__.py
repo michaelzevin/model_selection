@@ -13,7 +13,7 @@ import pandas as pd
 from scipy.stats import norm, truncnorm
 from .utils.selection_effects import detection_probability, _PSD_defaults
 from .utils.bounded_Nd_kde import Bounded_Nd_kde
-from .utils.transform import mchirpq_to_m1m2, mtotq_to_m1m2, mtoteta_to_m1m2, chieff_to_s1s2
+from .utils.transform import mchirpq_to_m1m2, mtotq_to_m1m2, mtoteta_to_m1m2, chieff_to_s1s2, mtotq_to_mc, mtoteta_to_mchirpq, eta_to_q
 
 from astropy import cosmology
 from astropy.cosmology import z_at_value
@@ -23,7 +23,7 @@ cosmo = cosmology.Planck15
 # Need to ensure all parameters are normalized over the same range
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,5)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
-_snrscale_sigmas = {"mchirp": 0.08, "eta": 0.21, "chieff": 0.14, "Theta": 0.21}
+_snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
 _KDE_maxsamps = int(1e4)
 
 """
@@ -235,6 +235,7 @@ class KDEModel(Model):
             print('   generating observations from underlying distribution for {}'.format(self.label))
             observations = np.zeros((Nobs, self._samples.shape[-1]))
             snrs = np.zeros(Nobs)
+            Thetas = np.zeros(Nobs)
             for n in tqdm(np.arange(Nobs)):
                 detected=False
                 while detected==False:
@@ -256,14 +257,16 @@ class KDEModel(Model):
 
                     # see whether the system is detected, this will either be 1 or 0 for a single Ntrial
                     system = [m1,m2,z,s1,s2]
-                    pdet, snr = detection_probability(system, ifos=_PSD_defaults[self._detector], rho_thresh=self._snr_thresh, Ntrials=1, return_snr=True, psd_path=psd_path)
+                    pdet, snr, Theta = detection_probability(system, ifos=_PSD_defaults[self._detector], rho_thresh=self._snr_thresh, Ntrials=1, return_snr=True, psd_path=psd_path)
                     if pdet>0:
                         observations[n,:] = obs
                         snrs[n] = np.float(snr)
+                        Thetas[n] = np.float(Theta)
                         detected=True
 
         self._observations = observations
         self._snrs = snrs
+        self._Thetas = Thetas
         return observations
 
 
@@ -271,6 +274,13 @@ class KDEModel(Model):
         """
         Mocks up measurement uncertainty from observations using specified method
         """
+
+        params = list(self._samples.keys())
+
+        # If systems were not able to be drawn from the underlying distribution and method='snr' was specified, fall back to using 'gwevents'
+        if method=='snr' and any(np.isnan(self._snrs)):
+            warnings.warn("You specified SNR-dependent measurement uncertainties, but your method for generating observations does not allow for SNR calculations. Falling back to using the method 'gwevents'.")
+            method = 'gwevents'
 
         if method=='delta':
             # assume a delta function measurement
@@ -308,128 +318,83 @@ class KDEModel(Model):
                     obsdata[idx, :, pidx] = samps
 
 
+        # for 'snr', use SNR-dependent measurement uncertainty following procedures from Fishbach et al. 2018
+        if method == "snr":
 
+            for idx, (obs,snr,Theta) in enumerate(zip(self._observations, self._snrs, self._Thetas)):
+                # convert to mchirp, q
+                if set(['mchirp','q']).issubset(set(params)):
+                    mc_true = obs[params.index('mchirp')]
+                    q_true = obs[params.index('q')]
+                elif set(['mtot','q']).issubset(set(params)):
+                    mc_true = mtotq_to_mc(obs[params.index('mtot')], obs[params.index('q')])
+                    q_true = obs[params.index('q')]
+                elif set(['mtot','eta']).issubset(set(params)):
+                    mc_true, q_true = mtoteta_to_mchirpq(obs[params].index('mtot'), obs[params].index('q'))
 
+                z_true = obs[params.index('z')]
+                mcdet_true = mc_true*(1+z_true)
+                eta_true = q_true * (1+q_true)**(-2)
+                Theta_true = Theta
+                dL_true = cosmo.luminosity_distance(z_true).to(u.Gpc).value
 
+                # apply Gaussian noise to SNR
+                snr_obs = snr + np.random.normal(loc=0, scale=1)
 
-        return obsdata
+                # get the snr-weighted sigma for the detector-frame chirp mass, and draw samples
+                mc_sigma = _snrscale_sigmas['mchirp']*self._snr_thresh / snr_obs
+                if observation_noise==True:
+                    mcdet_obs = float(10**(np.log10(mcdet_true) + norm.rvs(loc=0, scale=mc_sigma, size=1)))
+                else:
+                    mcdet_obs = mcdet_true
+                mcdet_samps = 10**(np.log10(mcdet_obs) + norm.rvs(loc=0, scale=mc_sigma, size=Nsamps))
 
+                # get the snr-weighted sigma for eta, and draw samples
+                eta_sigma = _snrscale_sigmas['eta']*self._snr_thresh / snr_obs
+                if observation_noise==True:
+                    eta_obs = float(truncnorm.rvs(a=(0-eta_true)/eta_sigma, b=(0.25-eta_true)/eta_sigma, loc=eta_true, scale=eta_sigma, size=1))
+                else:
+                    eta_obs = eta_true
+                eta_samps = truncnorm.rvs(a=(0-eta_obs)/eta_sigma, b=(0.25-eta_obs)/eta_sigma, loc=eta_obs, scale=eta_sigma, size=Nsamps)
 
-    def generate_observations_bkup(self, Nobs, Nsamps=1, measurement_uncertainty=None, observation_noise=False, rho_thresh=8):
-        """
-        Generates samples from KDE model. This will generated Nobs samples. 
+                # get samples for projection factor (use the true value as the observed value)
+                snr_opt = snr/Theta
+                Theta_sigma = 0.3 / (1.0 + snr_opt/self._snr_thresh)
+                Theta_samps = truncnorm.rvs(a=(0-Theta)/Theta_sigma, b=(1-Theta)/Theta_sigma, loc=Theta, scale=Theta_sigma, size=Nsamps)
 
-        If measurement_uncertainty is not None, will return Nsamps posterior samples according to the available methods.
+                # get luminosity distance and redshift observed samples
+                dL_samps = dL_true * (Theta_samps/Theta)
+                z_samps = np.asarray([z_at_value(cosmo.luminosity_distance, d) for d in dL_samps*u.Gpc])
 
-        Note that this method gives the branching fraction of the *underlying* formation models, whereas the branching fractions using GW observations gives the branching fraction of the *detectable* formation models. 
-        """
-
-        # --- First, generate the true value of the observations
-        # If (Mc/Mtot, q/eta, z, and chieff) are specified as inference 
-        # parameters, we can draw from the raw distribution and 
-        # determine Nobs detectable sources with SNR calculations.
-        # If these parameters are not specified, we need to fall back
-        # to generating samples from the detection-weighted distribution, 
-        # and using approximate SNRs from the current catalog of GWs, which
-        # will giving betas for the *detectable* populations. 
-
-        params = self._samples.keys()
-        observations = self.sample(Nobs, weighting=False)
-
-        if not measurement_uncertainty:
-            # assume a delta function measurement
-            obsdata = np.expand_dims(observations, 1)
-            return obsdata
-
-        # --- smear out observations
-        # set up obsdata as [obs, samps, params]
-        obsdata = np.zeros((Nobs, Nsamps, observations.shape[-1]))
-
-        if measurement_uncertainty == "gwevents":
-            for idx, obs in enumerate(observations):
-                for pidx in np.arange(observations.shape[-1]):
-                    mu = obs[pidx]
-                    sigma = self._posterior_sigmas[pidx]
-                    low_lim = self._param_bounds[pidx][0]
-                    high_lim = self._param_bounds[pidx][1]
-
-                    # construnct gaussian and drawn samples
-                    dist = norm(loc=mu, scale=sigma)
-                    samps = dist.rvs(Nsamps)
-
-                    # reflect samples if drawn past the parameters bounds
-                    above_idxs = np.argwhere(samps>high_lim)
-                    samps[above_idxs] = high_lim - (samps[above_idxs]-high_lim)
-                    below_idxs = np.argwhere(samps<low_lim)
-                    samps[below_idxs] = low_lim + (low_lim - samps[below_idxs])
-
-                    obsdata[idx, :, pidx] = samps
-
-        elif measurement_uncertainty == "snr":
-            # Follow procedures from Fishbach et al. 2018, Farr et al. 2019
-            # Need chirp mass, q, and redshift to use this method!!!
-            params = list(self._samples.keys())
-            for p in ['mchirp','q','z']:
-                if p not in params:
-                    raise KeyError("Need 'mchirp', 'q', and 'z' to use this measurement uncertainty method!")
-            for idx, obs in enumerate(observations):
-                z = obs[params.index('z')]
-                mc = obs[params.index('mchirp')]
-                mcdet = mc*(1+z)
-                q = obs[params.index('q')]
-                eta = q * (1+q)**(-2)
-                dL = cosmo.luminosity_distance(z).to(u.Gpc).value
-                # Get approximate optimal SNR
-                rho_opt = selection_effects.snr_opt_approx(mcdet, dL)
-                # Projection factor (ifo just needed for antenna pattern)
-                ifo = selection_effects.get_detector("H1")
-                Theta  = selection_effects.sample_extrinsic(ifo)
-                rho = rho_opt * Theta
-                # Apply Gaussian noise to SNR
-                rho_obs = rho + np.random.normal(loc=0, scale=1)
-                # FIXME: do we also need to choose a ML value??
-                rho_obs = 25
-                
-                # Now, convert from "true" values to "observed" values
-                mcdet_sig = _snrscale_sigmas['mchirp']*rho_thresh / rho_obs
-                mcdet_obs = 10**(np.log10(mcdet) + norm.rvs(loc=0, \
-                    scale=mcdet_sig, size=Nsamps))
-                eta_sig = _snrscale_sigmas['eta']*rho_thresh / rho_obs
-                eta_obs = truncnorm.rvs(a=(0-eta)/eta_sig, b=(0.25-eta)/eta_sig, loc=eta, \
-                    scale=eta_sig, size=Nsamps)
-                Theta_sig = _snrscale_sigmas['Theta']*rho_thresh / rho_obs
-                Theta_obs = truncnorm.rvs(a=(0-Theta)/Theta_sig, b=(1-Theta)/Theta_sig, loc=Theta, \
-                    scale=Theta_sig, size=Nsamps)
-
-                # get m1 and m2 detector-frame observations
-                Mvar = mcdet_obs / (eta_obs**(3./5))
-                m1det_obs = Mvar + np.sqrt(Mvar**2 - 4*eta_obs*Mvar**2) / 2
-                m2det_obs = Mvar - np.sqrt(Mvar**2 - 4*eta_obs*Mvar**2) / 2
-                # get dL and redshift observations
-                dL_obs = dL*selection_effects.snr_opt_approx(mcdet_obs, dL)*Theta_obs / rho_obs
-                z_obs = np.asarray([z_at_value(cosmo.luminosity_distance, d) for d in dL_obs*u.Gpc])
-                # get source-frame chirp mass
-                m1_obs = m1det_obs / (1+z_obs)
-                m2_obs = m2det_obs / (1+z_obs)
-                mc_obs = (m1_obs * m2_obs)**(3./5) / (m1_obs + m2_obs)**(1./5)
+                # get source-frame chirp mass and other mass parameters
+                mc_samps = mcdet_samps / (1+z_samps)
+                q_samps = eta_to_q(eta_samps)
+                m1_samps, m2_samps = mchirpq_to_m1m2(mc_samps,q_samps)
+                m1_samps, m2_samps = mchirpq_to_m1m2(mc_samps,q_samps)
+                mtot_samps = (m1_samps + m2_samps)
 
                 for pidx, param in enumerate(params):
                     if param=='mchirp':
-                        obsdata[idx, :, pidx] = mc_obs
-                    if param=='q':
-                        q_obs = (1-np.sqrt(1-4*eta_obs)-2*eta_obs)/(2*eta_obs)
-                        obsdata[idx, :, pidx] = mc_obs
-                    if param=='chieff':
-                        chieff = obs[params.index('chieff')]
-                        chieff_sig = _snrscale_sigmas['chieff']*rho_thresh / rho_obs
-                        chieff_obs = truncnorm.rvs(a=(-1-chieff)/chieff_sig, b=(1-chieff)/chieff_sig, \
-                            loc=chieff, scale=chieff_sig, size=Nsamps)
-                        obsdata[idx, :, pidx] = chieff_obs
-                    if param=='z':
-                        obsdata[idx, :, pidx] = z_obs
+                        obsdata[idx, :, pidx] = mc_samps
+                    elif param=='mtot':
+                        obsdata[idx, :, pidx] = mtot_samps
+                    elif param=='q':
+                        obsdata[idx, :, pidx] = q_samps
+                    elif param=='eta':
+                        obsdata[idx, :, pidx] = eta_samps
+                    elif param=='chieff':
+                        chieff_true = obs[params.index('chieff')]
+                        chieff_sigma = _snrscale_sigmas['chieff']*self._snr_thresh / snr_obs
+                        if observation_noise==True:
+                            chieff_obs = float(truncnorm.rvs(a=(-1-chieff_true)/chieff_sigma, b=(1-chieff_true)/chieff_sigma, loc=chieff_true, scale=chieff_sigma, size=1))
+                        else:
+                            chieff_obs = chieff_true
+                        chieff_samps = truncnorm.rvs(a=(-1-chieff_obs)/chieff_sigma, b=(1-chieff_obs)/chieff_sigma, loc=chieff_obs, scale=chieff_sigma, size=Nsamps)
+                        obsdata[idx, :, pidx] = chieff_samps
+                    elif param=='z':
+                        obsdata[idx, :, pidx] = z_samps
 
         return obsdata
-
 
 
 def normalize_samples(samples, bounds):

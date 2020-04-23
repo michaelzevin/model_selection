@@ -61,6 +61,18 @@ def mtoteta_to_m1m2(Mt,eta):
     m2 = 0.5*(Mt - np.sqrt(Mt**2 - 4*eta*Mt**2))
     return m1, m2
 
+def mtotq_to_mc(Mt,q):
+    mc = q**(3./5) * Mt / (1+q)**6./5
+
+def mtoteta_to_mchirpq(Mt,eta):
+    q = (1 + np.sqrt(1-4*eta) - 2*eta) / (2*eta)
+    mc = q**(3./5) * Mt / (1+q)**6./5
+    return mc, q
+
+def eta_to_q(eta):
+    q = (1-np.sqrt(1-4*eta)-2*eta)/(2*eta)
+    return q
+
 def chieff_to_s1s2(chieff):
     # we lose information here, so assume the spin magnitudes are the same and the in-plane spins are 0
     s1 = (0,0,chieff)

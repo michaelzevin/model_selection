@@ -278,8 +278,11 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, 
         passed = sum(1 for i in snrs if i>=float(rho_thresh))
         weight = float(passed) / len(snrs)
 
+    # calculate projection factor
+    Thetas = snrs/snr_opt
+
     if return_snr==True:
-        return weight, snrs
+        return weight, snrs, Thetas
     else:
         return weight
 
