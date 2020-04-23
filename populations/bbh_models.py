@@ -9,8 +9,6 @@ from .utils.transform import _DEFAULT_TRANSFORMS, _to_chieff, \
 _uniform_spinmag, _isotropic_spinmag
 
 
-VERBOSE=True
-
 
 _VALID_SPIN_DISTR = {
     # Uniform - |a| ~ uniform distribution in 0, 1
@@ -48,7 +46,7 @@ def get_params(df, params):
     return df
 
 
-def get_models(file_path, specific_channels, params, spin_distr=None, weighting=None, **kwargs):
+def get_models(file_path, specific_channels, params, spin_distr=None, weighting=None, verbose=False, **kwargs):
     """
     Call this to get all the models and submodels, as well
     as KDEs of these models, packed inside of dictionaries labelled in the
@@ -63,7 +61,7 @@ def get_models(file_path, specific_channels, params, spin_distr=None, weighting=
     """
 
     # --- Read in the models, parse the inference parameters
-    if VERBOSE:
+    if verbose:
         print("\nReading models and applying transformations...\n")
 
     # all models should be saved in 'file_path' in a hierarchical structure, with the channel being the top group
@@ -103,29 +101,8 @@ def get_models(file_path, specific_channels, params, spin_distr=None, weighting=
             current_level = current_level[part]
 
     # --- Now, construct KDE models
-    if VERBOSE:
-        print("\nConstructing KDEs for underlying populations...\n")
-    kde_models_unweighted = {}
-    for smdl in tqdm(deepest_models):
-        smdl_list = smdl.split('/')
-        current_level = models
-        current_level_kde = kde_models_unweighted
-        for part in smdl_list:
-            if part not in current_level_kde:
-                if part == smdl_list[-1]:
-                    # if we are on the last level, save kdes
-                    df = current_level[part]
-                    label = '/'.join(smdl_list)
-                    mdl = KDEModel.from_samples(label, df, params, weighting=None)
-                    current_level_kde[part] = mdl
-                else:
-                    current_level_kde[part] = {}
-
-            current_level = current_level[part]
-            current_level_kde = current_level_kde[part]
-
-    if VERBOSE:
-        print("\nConstructing KDEs for detection-weighted population...\n")
+    if verbose:
+        print("\nConstructing KDEs for populations...\n")
     kde_models = {}
     for smdl in tqdm(deepest_models):
         smdl_list = smdl.split('/')
@@ -145,5 +122,5 @@ def get_models(file_path, specific_channels, params, spin_distr=None, weighting=
             current_level = current_level[part]
             current_level_kde = current_level_kde[part]
 
-    return deepest_models, models, kde_models, kde_models_unweighted
+    return deepest_models, models, kde_models
 

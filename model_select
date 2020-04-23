@@ -22,12 +22,10 @@ from populations import bbh_models, gw_obs
 from sample import sample
 from plot import msplot
 
-VERBOSE=True
-MAKE_PLOTS=True
-
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
 argp.add_argument("-f", "--file-path", type=str, required=True, help="Path to where the population models are living. Models should be stored in hdf5 format, with the channel as the base group, and model parameters as subgroups (e.g., 'CE/chi01/alpha0.5').")
+argp.add_argument("-psd", "--psd-path", type=str, required=True, help="Path to directory with PSD files, saved in same format as Observing Scenarios data release.")
 argp.add_argument("-m", "--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. When there are multiple parameters in the submodel, separate with '/' (e.g., 'chi00/alpha5'). If 'gwobs', will use the actual GW observations.")
 argp.add_argument("-gw", "--gwpath", type=str, help="Sets the path for where the GW samples are living. Necessary if model0='gwobs'. Default=None.")
 argp.add_argument("-c", "--specific-channels", nargs="+", help="Specifies the formation channels you wish to consider in the inference. If 'None', will use all channels in the hdf5 file. Default=None.")
@@ -39,6 +37,8 @@ argp.add_argument("-w", "--weights", type=str, help="Name of column in dataframe
 argp.add_argument("-u", "--uncertainty", type=str, help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posteriors'), or from a mock gaussian with the mean and sigma of observations ('gaussian'). For mock observations, you can choose to smear according to the average spread in parameters from current GW observations ('gwevents'), or use a gaussian with an SNR-dependent sigma ('snr'). Default=None.")
 argp.add_argument("-rp", "--rate-prior", action="store_true", help="Uses predicted rates from population models as priors. WARNING: still in beta. Default=False.")
 argp.add_argument("-sm", "--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the spin magnitude is not specified. Default is None.")
+argp.add_argument("-P", "--make-plots", action="store_true", help="Determines whether to make accompanying plots. Default is False.")
+argp.add_argument("-V", "--verbose", action="store_true", help="Determines whether to be verbose in the code. Default is False.")
 argp.add_argument("-S", "--save-samples", action="store_true", help="Save all the samples rather than just the summary statistics. Default is False.")
 argp.add_argument("-E", "--evidence", action="store_true", help="Determines whether or not to calculate the evidence for each submodel using thermodynamic integration. WARNING: still in beta. Default is False.")
 argp.add_argument("-rs", "--random-seed", type=int, help="Use this to set the random seed. Default=None.")
@@ -49,6 +49,12 @@ args = argp.parse_args()
 if args.random_seed:
     np.random.seed(args.random_seed)
 
+# --- Save certain boolean arguments
+verbose=args.verbose
+make_plots=args.make_plots
+# see if we're using GW observations
+gwobs = True if args.model0=='gwobs' else False
+
 # --- Useful functions for accessing items in dictionary
 def getFromDict(dataDict, mapList):
     return reduce(operator.getitem, mapList, dataDict)
@@ -56,17 +62,14 @@ def setInDict(dataDict, mapList, value):
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
 
 # --- Load in models/kdemodels into dict structure: models[model][channel]
-model_names, models, kde_models, kde_models_unweighted = bbh_models.get_models(args.file_path, args.specific_channels, args.params, args.spinmag, weighting=args.weights)
+model_names, models, kde_models, = bbh_models.get_models(args.file_path, args.specific_channels, args.params, spin_distr=args.spinmag, weighting=args.weights, verbose=verbose)
 model_names.sort()
 channels = sorted(list(models.keys()))
 params = args.params
-hyperparams = list(set([x.split('/', 1)[1] for x in model_names]))
+hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
 Nhyper = np.max([len(x.split('/')) for x in hyperparams])
 
-# see if we're using GW observations
-gwobs = True if args.model0=='gwobs' else False
-
-if VERBOSE:
+if verbose:
     print("")
     print("Formation channels: " + ", ".join(channels))
     print("Astrophysical models: " + ", ".join(model_names))
@@ -137,7 +140,7 @@ if not gwobs:
 
 # --- If model0 specified, save relative fractions for each KDE model, and store model0
 if not gwobs:
-    if VERBOSE:
+    if verbose:
         print("Saving relative fractions and storing true model...\n")
 
     model0 = {}
@@ -152,7 +155,7 @@ if not gwobs:
             # print info about model0
             if (smdl == args.model0):
                 model0[channel] = getFromDict(kde_models, model.split('/'))
-                if VERBOSE:
+                if verbose:
                     if idx==0:
                         print("'{0:s}' set as true model".format(smdl))
                         print("  model range:")
@@ -165,44 +168,47 @@ if not gwobs:
                         print("")
 
 # --- Generate observations ([observations, params, samples])
-if VERBOSE:
+if verbose:
     print("Generating observations...\n")
 
-# Calls gw_obs.py if argument is passed
+# Calls gw_obs.py to generate samples if argument is passed
 if gwobs:
     model0=None
     obsdata, events = gw_obs.generate_observations(params, args.gwpath, \
                                             args.Nsamps, args.uncertainty)
-    if VERBOSE:
+    if verbose:
         print("Using the following {0:d} GW observations for \
 inference:".format(len(events)))
         print(*events, sep=', ')
         print("")
 
 else:
-    if VERBOSE:
-        print("Drawing {0:d} observations from the true \
-model...\n".format(int(args.Nobs)))
+    if verbose:
+        print("Drawing {0:d} observations from the true model...\n".format(int(args.Nobs)))
     for idx, channel in enumerate(model0):
         # first check that the branching fractions * Nobs are integers
         if not (args.Nobs*model0[channel]._rel_frac).is_integer():
             warnings.warn('Number of observations is not divisble by branching fractions, this may result in drawing a number of samples slighty different than what was specified!')
+        Nobs_per_channel = int(np.round(args.Nobs * model0[channel]._rel_frac))
         if idx==0:
-            Nobs_per_channel = int(np.round(args.Nobs * model0[channel]._rel_frac))
-            obsdata = model0[channel].generate_observations(Nobs_per_channel, \
-                                                args.Nsamps, args.uncertainty)
+            observations = model0[channel].generate_observations(Nobs_per_channel, \
+                detector=args.weights, psd_path=args.psd_path)
+            obsdata = model0[channel].measurement_uncertainty(args.Nsamps, \
+                args.uncertainty, observation_noise=True)
         else:
-            Nobs_per_channel = int(np.round(args.Nobs * model0[channel]._rel_frac))
+            observations = np.concatenate((observations, \
+                model0[channel].generate_observations(Nobs_per_channel, \
+                detector=args.weights, psd_path=args.psd_path)))
             obsdata = np.concatenate((obsdata, \
-                  model0[channel].generate_observations(Nobs_per_channel, \
-                                            args.Nsamps, args.uncertainty)))
+                model0[channel].measurement_uncertainty(args.Nsamps, \
+                args.uncertainty, observation_noise=True)))
 
 
 # Plot the KDEs and observations
-if MAKE_PLOTS==True:
+if make_plots==True:
     print("Plotting marginalized KDE models...")
-    msplot.plot_1D_kdemodels(model_names, kde_models, params, obsdata, model0, \
-                name=args.name, fixed_vals=[], plot_obs=True, plot_obs_samples=False)
+    msplot.plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, \
+           model0, name=args.name, fixed_vals=[], plot_obs=True, plot_obs_samples=False)
     print("")
 
 
@@ -211,13 +217,13 @@ if MAKE_PLOTS==True:
 # so we don't need to recompute p_model(data) over and over again when the 
 # observation values aren't going to change. 
 # Lower the number of samples per observation to speed this up.
-if VERBOSE:
+if verbose:
     print("Freezing sample evaluations in their respective models...")
 for model in model_names:
-    if VERBOSE:
+    if verbose:
         print("  {0:s}".format(model))
     getFromDict(kde_models, model.split('/')).freeze(obsdata)
-if VERBOSE:
+if verbose:
     print("Done freezing KDE evaluations of observations!\n")
 
 
@@ -229,7 +235,7 @@ if VERBOSE:
 # --- Do the sampling!
 
 sampler = sample.Sampler(model_names)
-sampler.sample(kde_models, obsdata)
+sampler.sample(kde_models, obsdata, verbose=verbose)
 samples = sampler.samples
 lnprb = sampler.lnprb
 submodels_dict = sampler.submodels_dict
@@ -240,7 +246,7 @@ for hyper_idx in list(submodels_dict.keys()):
 
 
 # Plot samples and histograms of betas per model
-if MAKE_PLOTS==True:
+if make_plots==True:
     print("Plotting samples...\n")
     msplot.plot_samples(samples, submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=0)
 
@@ -253,7 +259,7 @@ lnprb = lnprb.reshape((lnprb.shape[0] * lnprb.shape[1]))
 
 
 # --- Print summary info about the sampling
-if VERBOSE:
+if verbose:
     print("Sample breakdown:")
     recovered_vals = {}
     smdls = list(set([x.split('/',1)[1] for x in model_names]))
@@ -297,7 +303,7 @@ if args.save_samples:
     else:
         fname = "output.hdf5"
 
-    if VERBOSE:
+    if verbose:
         print("Saving information to '{0:s}'...\n".format(fname))
 
     hfile = h5py.File(fname, "w")

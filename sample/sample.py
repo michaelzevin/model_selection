@@ -10,8 +10,6 @@ import pdb
 import emcee
 from emcee import EnsembleSampler
 
-VERBOSE=True
-
 _valid_samplers = {'emcee': EnsembleSampler}
 
 _sampler = 'emcee'
@@ -93,7 +91,7 @@ posteriors!".format(self.posterior_name))
         self.fburnin = kwargs['fburnin'] if 'fburnin' in kwargs else _fburnin
 
 
-    def sample(self, kde_models, obsdata):
+    def sample(self, kde_models, obsdata, verbose=False):
         """
         Initialize and run the sampler
         """
@@ -111,15 +109,15 @@ posteriors!".format(self.posterior_name))
 
         # --- Do the sampling
         posterior_args = [obsdata, kde_models, self.submodels_dict, self.channels, _concentration]
-        if VERBOSE:
+        if verbose:
             print("Sampling...")
         sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, args=posterior_args)
         for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)):
-            if VERBOSE:
+            if verbose:
                 if (idx+1) % 50 == 0:
                     sys.stderr.write("\r  {0}% (N={1})".\
                                 format(float(idx+1)*100. / self.nsteps, idx+1))
-        if VERBOSE:
+        if verbose:
             print("\nSampling complete!\n")
 
         # remove the burnin

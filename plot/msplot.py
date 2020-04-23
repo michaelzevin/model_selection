@@ -34,7 +34,7 @@ def setInDict(dataDict, mapList, value):
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
 
 
-def plot_1D_kdemodels(model_names, kde_models, params, obsdata, model0, name=None, fixed_vals=[], plot_obs=False, plot_obs_samples=False):
+def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, model0, name=None, fixed_vals=[], plot_obs=False, plot_obs_samples=False):
     """
     Plots all the KDEs for each channel in each model, as well as the *true* model described by the input branching fraction.
     If more than one population parameter is being considered, specify in list 'fixed_vals' (e.g., ['alpha1']).
@@ -80,7 +80,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, obsdata, model0, name=Non
 
                 # if this model is in model0, sample the marginalized KDE
                 if model0 and kde.label == model0[channel].label:
-                    channel_model0_samples[:,pidx] = marg_kde.sample(int(kde._rel_frac*_Nsamps)).flatten()
+                    channel_model0_samples[:,pidx] = marg_kde.sample(int(kde._rel_frac*_Nsamps), weighted_kde=True).flatten()
 
                 # legend label
                 if model0:
@@ -134,34 +134,31 @@ def plot_1D_kdemodels(model_names, kde_models, params, obsdata, model0, name=Non
                 ax.plot(eval_pts.flatten(), pdf, color='k', linestyle='--')
 
             # plot the observations, if specified
+            y_max = ax.get_ylim()[1]
             if plot_obs:
-                y_max = ax.get_ylim()[1]
+                for obs in observations:
+                    # delta function observations
+                    ax.axvline(obs[pidx], ymax=0.2, color='b', \
+                                                alpha=0.5, zorder=10)
+
+            if plot_obs_samples:
                 for obs in obsdata:
-                    if obs.shape[0] == 1:
-                        # delta function observations
-                        ax.axvline(obs[:,pidx], ymax=0.2, color='b', \
-                                                    alpha=0.5, zorder=10)
-                    elif plot_obs_samples:
-                        ax.axvline(np.median(obs[:,pidx]), ymax=0.2, \
-                                            color='b', alpha=0.5, zorder=10)
-                        # construct KDE from observations
-                        obs_samps = pd.DataFrame(obs[:,pidx], columns=[param])
-                        obs_kde = KDEModel.from_samples('obs_kde', obs_samps, \
-                                                       [param], weighting=None)
-                        eval_pts = np.linspace(obs_samps.min(), \
-                                                        obs_samps.max(), 100)
-                        eval_pts = eval_pts.reshape(100,1,1)
-                        pdf = obs_kde(eval_pts)
+                    ax.axvline(np.median(obs[:,pidx]), ymax=0.2, \
+                                        color='b', alpha=0.5, zorder=10)
+                    # construct KDE from observations
+                    obs_samps = pd.DataFrame(obs[:,pidx], columns=[param])
+                    obs_kde = KDEModel.from_samples('obs_kde', obs_samps, \
+                                                   [param], weighting=None)
+                    eval_pts = np.linspace(obs_samps.min(), \
+                                                    obs_samps.max(), 100)
+                    eval_pts = eval_pts.reshape(100,1,1)
+                    pdf = obs_kde(eval_pts)
 
-                        # scale down the pdf
-                        pdf = 0.2 * pdf/(pdf.max()/pdf_max)
+                    # scale down the pdf
+                    pdf = 0.2 * pdf/(pdf.max()/pdf_max)
 
-                        ax.fill_between(eval_pts.flatten(), \
-                          y1=np.zeros_like(pdf), y2=pdf, color='b', alpha=0.05)
-                    else:
-                        ax.axvline(np.median(obs[:,pidx]), ymax=0.2, \
-                                               color='b', alpha=0.5, zorder=10)
-
+                    ax.fill_between(eval_pts.flatten(), \
+                      y1=np.zeros_like(pdf), y2=pdf, color='b', alpha=0.05)
 
     # Titles and saving
     if model0:

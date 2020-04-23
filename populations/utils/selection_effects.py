@@ -223,7 +223,7 @@ def gen_redshifts_unicomvol(n=1, z_max=3):
 
 
 # Detection probability function
-def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, Ntrials=1000, **kwargs):
+def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, Ntrials=1000, return_snr=False, **kwargs):
     """
     Calls other functions in this file to calculate a detection probability
     For multiprocessing purposes, takes in array 'system' of form:
@@ -260,8 +260,10 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, 
         rho_opts[ifo] = snr(hpf_opt, hxf_opt, freqs, psds[ifo], f_low=f_low, df=df)
 
     # if the combined SNR is less than the detection threshold, give weight of 0
-    if np.linalg.norm(list(rho_opts.values())) < float(rho_thresh):
+    snr_opt = np.linalg.norm(list(rho_opts.values()))
+    if snr_opt < float(rho_thresh):
         weight = 0.0
+        snrs = np.asarray(snr_opt)
 
     else:
         snrs = []
@@ -272,10 +274,28 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, 
                 network_snr.append(rho_opts[ifo]*rho_factor)
             snrs.append(np.sqrt(np.sum(np.square(network_snr))))
         # now, we see what percentage of SNRs passed our threshold
+        snrs = np.asarray(snrs)
         passed = sum(1 for i in snrs if i>=float(rho_thresh))
         weight = float(passed) / len(snrs)
 
-    return weight
+    if return_snr==True:
+        return weight, snrs
+    else:
+        return weight
 
 
+
+_PSD_defaults = {
+    "ligo_psd": "LIGO_P1200087.dat",
+    "virgo_psd": "Virgo_P1200087.dat",
+    "midhighlatelow": {"H1":"midhighlatelow"}, 
+    "midhighlatelow_network": {"H1":"midhighlatelow", 
+            "L1":"midhighlatelow",
+            "V1":"midhighlatelow"},
+    "design": {"H1":"design"},
+    "design_network": {"H1":"design",
+            "L1":"design",
+            "V1":"design"}, 
+    "snr_single": 8, 
+    "snr_network": 12}
 

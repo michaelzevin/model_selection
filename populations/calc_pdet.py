@@ -31,22 +31,8 @@ from utils import selection_effects
 cosmo = cosmology.Planck15
 
 ### Specify PSD information
-_ligo_psd = "LIGO_P1200087.dat"
-_virgo_psd = "Virgo_P1200087.dat"
-
-ifos_O3_single = {"H1":"midhighlatelow"}
-ifos_O3_network = {"H1":"midhighlatelow",
-            "L1":"midhighlatelow",
-            "V1":"midhighlatelow"}
-ifos_design_single = {"H1":"design"}
-ifos_design_network = {"H1":"design",
-            "L1":"design",
-            "V1":"design"}
-
-_configs = [ifos_O3_single,ifos_O3_network,ifos_design_single,ifos_design_network]
-_names = ['midhighlatelow','midhighlatelow_network','design','design_network']
-#_configs = [ifos_design_network]
-#_names = ['pdet_designnetwork']
+_PSD_defaults = selection_effects._PSD_defaults
+_PSDs_for_pdet = ['midhighlatelow','midhighlatelow_network','design','design_network']
 
 
 ### Argument handling
@@ -55,9 +41,6 @@ argp.add_argument("--file-path", type=str, required=True, help="Path to populati
 argp.add_argument("--psd-path", type=str, required=True, help="Path to directory  with PSD files, saved in same format as Observing Scenarios data release.")
 argp.add_argument("--Ntrials", type=int, default=1000, help="Define the number of monte carlo trails used for calculating the average SNR. Default=1000")
 argp.add_argument("--multiproc", type=int, default=1, help="Number of cores you want to use. Default=1")
-argp.add_argument("--z-max", type=str, default=3.0, help="Maximum redshift value for sampling. Default=3.0")
-argp.add_argument("--snr-min-single", type=float, default=8, help="Define the SNR threshold for detectability in single-detector configuration. Default=8")
-argp.add_argument("--snr-min-network", type=float, default=12, help="Define the SNR threshold for detectability in multiple-network configuration. Default=12")
 
 args = argp.parse_args()
 
@@ -85,12 +68,13 @@ for model in models:
     # --- detector weights
     # loop over ifo configurations and sensitivities for calculating different pdet
     print("  Calculating detector weights...")
-    for ifos, name in zip(_configs,_names):
+    for name in _PSDs_for_pdet:
+        ifos = _PSD_defaults[name]
         print("    configuration {0:s}...".format(name))
         if "network" in name:
-            snr_min = args.snr_min_network
+            snr_min = _PSD_defaults['snr_single']
         else:
-            snr_min = args.snr_min_single
+            snr_min = _PSD_defaults['snr_network']
 
         # set up partial functions and organize data for multiprocessing
         systems_info = []

@@ -46,6 +46,27 @@ def _isotropic_spinmag(samples):
     a2 = powerlaw.rvs(3, size=len(samples))
     return a1, a2
 
+def mchirpq_to_m1m2(mc,q):
+    m1 = mc*(1+q)**(1./5) / q**(3./5)
+    m2 = mc*q**(2./5) * (1+q)**(1./5)
+    return m1, m2
+
+def mtotq_to_m1m2(Mt,q):
+    m1 = Mt / (1+q)
+    m2 = Mt*q / (1+q)
+    return m1, m2
+
+def mtoteta_to_m1m2(Mt,eta):
+    m1 = 0.5*(Mt + np.sqrt(Mt**2 - 4*eta*Mt**2))
+    m2 = 0.5*(Mt - np.sqrt(Mt**2 - 4*eta*Mt**2))
+    return m1, m2
+
+def chieff_to_s1s2(chieff):
+    # we lose information here, so assume the spin magnitudes are the same and the in-plane spins are 0
+    s1 = (0,0,chieff)
+    s2 = (0,0,chieff)
+    return s1, s2
+
 _DEFAULT_TRANSFORMS = {
     "mchirp": _to_mchirp,
     "q": _to_q, 
