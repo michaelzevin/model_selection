@@ -164,7 +164,7 @@ def snr_opt_approx(mc, dL, N=11.15):
     return N*(mc/10)**(5./6) * (dL / 1)**(-1)
 
 # Sampling of extrinsic parameters
-def sample_extrinsic(det):
+def sample_extrinsic():
     """
     Varies extrinsic parameters of waveform for calculating detection probability
     """
@@ -173,6 +173,15 @@ def sample_extrinsic(det):
     ra, dec = np.random.uniform(0, 2*np.pi), np.arcsin(np.random.uniform(-1, 1))
     incl = np.arccos(np.random.uniform(-1, 1))
     psi = np.random.uniform(0, np.pi)
+
+    return ra, dec, incl, psi
+
+# Calculate projection factor
+def projection_factor(det, ra, dec, incl, psi):
+    """
+    Calculates projection factor Theta for a given detector antenna pattern and 
+    extrinsic parameters
+    """
 
     # inclination
     gp, gx = (1 + np.cos(incl)**2)/2, np.cos(incl)
@@ -269,10 +278,11 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, 
         snrs = []
         for i in range(Ntrials):
             network_snr = []
+            ra, dec, incl, psi = sample_extrinsic()
             for ifo, det in detectors.items():
-                rho_factor = sample_extrinsic(det)
+                rho_factor = projection_factor(det, ra, dec, incl, psi)
                 network_snr.append(rho_opts[ifo]*rho_factor)
-            snrs.append(np.sqrt(np.sum(np.square(network_snr))))
+            snrs.append(np.linalg.norm(network_snr))
         # now, we see what percentage of SNRs passed our threshold
         snrs = np.asarray(snrs)
         passed = sum(1 for i in snrs if i>=float(rho_thresh))

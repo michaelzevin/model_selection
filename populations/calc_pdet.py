@@ -72,9 +72,9 @@ for model in models:
         ifos = _PSD_defaults[name]
         print("    configuration {0:s}...".format(name))
         if "network" in name:
-            snr_min = _PSD_defaults['snr_single']
-        else:
             snr_min = _PSD_defaults['snr_network']
+        else:
+            snr_min = _PSD_defaults['snr_single']
 
         # set up partial functions and organize data for multiprocessing
         systems_info = []
