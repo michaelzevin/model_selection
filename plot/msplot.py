@@ -53,6 +53,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
     fig, axs = plt.subplots(Nsbmdls, Nparams, figsize=(6*Nparams, 5*Nsbmdls))
 
     # loop over all models...
+    pdb.set_trace()
     print('   plotting population models...')
     for cidx, channel in enumerate(channels):
         channel_smdls = [x for x in model_names if channel+'/' in x]
@@ -79,7 +80,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                 pdf = marg_kde(eval_pts)
 
                 # if this model is in model0, sample the marginalized KDE
-                if model0 and kde.label == model0[channel].label:
+                if model0 and (kde.label == model0[channel].label):
                     channel_model0_samples[:,pidx] = marg_kde.sample(int(kde._rel_frac*_Nsamps), weighted_kde=True).flatten()
 
                 # legend label

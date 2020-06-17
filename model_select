@@ -69,13 +69,21 @@ params = args.params
 hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
 Nhyper = np.max([len(x.split('/')) for x in hyperparams])
 
+# create dict for the hyperparameters at each level
+hyperparam_dict  = {}
+hyperidx=0
+while hyperidx < Nhyper:
+    hyperidx_with_Nhyper = np.argwhere(np.asarray([len(x.split('/')) for x in hyperparams])>hyperidx).flatten()
+    hyperparams_at_level = sorted(set([x.split('/')[hyperidx] for x in np.asarray(hyperparams)[hyperidx_with_Nhyper]]))
+    hyperparam_dict[hyperidx] = hyperparams_at_level
+    hyperidx += 1
+
 if verbose:
     print("")
     print("Formation channels: " + ", ".join(channels))
     print("Astrophysical models: " + ", ".join(model_names))
     print("Parameters for inference: " + ", ".join(params))
     print("")
-
 
 
 # --- Perform some checks to make sure things are compatible
@@ -86,10 +94,18 @@ if not gwobs:
         raise ValueError("You need to either specify branching fractions or choose to instead use GW observations!")
 
 # check that the true model provided is valid if gwobs not specified
+highest_smdl_ctr=0
 for channel in channels:
-    channel_smdls = [s.split('/', 1)[1] for s in model_names if channel+'/' in s]
-    if (args.model0 not in channel_smdls and not gwobs):
+    base_smdls = [s.split('/')[1] for s in model_names if channel+'/' in s]
+    highest_smdls = [s.split('/')[-1] for s in model_names if channel+'/' in s]
+    # make sure base model is shared across channels
+    if (args.model0.split('/')[0] not in base_smdls and not gwobs):
         raise ValueError("The true model you specified ({0:s}) is not one of the models in {1:s} directory!".format(args.model0, args.file_path))
+    # make sure highest level model is given in at least one channel
+    if (args.model0.split('/')[-1] in highest_smdls):
+        highest_smdl_ctr+=1
+if (highest_smdl_ctr==0 and not gwobs):
+    raise ValueError("The highest level of the true model you specified ({0:s}) is not used in any of your models!".format(args.model0))
 
 # ensure that the number of hyperparameters in each channel is the same depth
 for channel in channels:
@@ -100,13 +116,14 @@ for channel in channels:
 
 # ensure that models at each level are consistent across formation channels
 i=1 #start at 1, which will be the highest-level hyperparameter since the formation channel is the first parameter
+Nhyper_per_model = [len(x.split('/'))-1 for x in model_names]
 while i <= Nhyper:
-    hyper_set = list(set([x.split('/')[i] for x in model_names]))
+    models_at_hyperlevel = np.asarray(model_names)[np.asarray(Nhyper_per_model) >= i]
+    hyper_set = sorted(set([x.split('/')[i] for x in models_at_hyperlevel]))
     for channel in channels:
-        channel_smdls = [x for x in model_names if channel+'/' in x]
-        Nlevels_in_channel = [len(x.split('/')) for x in channel_smdls][0]-1
-        if Nlevels_in_channel <= i:
-            channel_set = [x.split('/')[i] for x in channel_smdls]
+        channel_smdls = [x for x in models_at_hyperlevel if channel+'/' in x]
+        if len(channel_smdls) > 0:
+            channel_set = sorted(set([x.split('/')[i] for x in channel_smdls]))
             if sorted(hyper_set) != sorted(channel_set):
                 raise ValueError("At hyperparameter level {0:d}, the formation channel {1:s} does not have the same hyperparameters as the rest of the models (all models: {2:s}, {1:s}: {3:s}".format(i, channel, ','.join(hyper_set), ','.join(channel_set)))
     i += 1
@@ -153,13 +170,13 @@ if not gwobs:
             # store relative fraction
             getFromDict(kde_models, model.split('/')).rel_frac(beta)
             # print info about model0
-            if (smdl == args.model0):
+            if (smdl in args.model0):
                 model0[channel] = getFromDict(kde_models, model.split('/'))
                 if verbose:
                     if idx==0:
-                        print("'{0:s}' set as true model".format(smdl))
+                        print("'{0:s}' set as true model".format(args.model0))
                         print("  model range:")
-                    print("    {0:s} (beta={1:0.2f})".format(channel, beta))
+                    print("    {0:s} ({1:s}, beta={2:0.2f})".format(channel, smdl, beta))
                     for param in args.params:
                         print("      {0:s}: {1:0.2f} - {2:0.2f}".format(param,\
                                 getFromDict(models, model.split('/'))[param].min(),\
@@ -192,23 +209,24 @@ else:
         Nobs_per_channel = int(np.round(args.Nobs * model0[channel]._rel_frac))
         if idx==0:
             observations = model0[channel].generate_observations(Nobs_per_channel, \
-                detector=args.weights, psd_path=args.psd_path)
+                detector=args.weights, psd_path=args.psd_path, from_detectable=True)
             obsdata = model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)
         else:
             observations = np.concatenate((observations, \
                 model0[channel].generate_observations(Nobs_per_channel, \
-                detector=args.weights, psd_path=args.psd_path)))
+                detector=args.weights, psd_path=args.psd_path, from_detectable=True)))
             obsdata = np.concatenate((obsdata, \
                 model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)))
 
 
 # Plot the KDEs and observations
+# FIXME this needs work
 if make_plots==True:
     print("Plotting marginalized KDE models...")
     msplot.plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, \
-           model0, name=args.name, fixed_vals=[], plot_obs=True, plot_obs_samples=False)
+           model0, name=args.name, fixed_vals=['alpha10'], plot_obs=True, plot_obs_samples=False)
     print("")
 
 
@@ -228,9 +246,31 @@ if verbose:
 
 
 
-# ---  Copy models so that they all have the same levels of hyperparameters
+# ---  Copy kde_models so that they all have the same levels of hyperparameters
+all_models_at_deepest = all([len(x.split('/')[1:])==Nhyper for x in model_names])
+while all_models_at_deepest==False:
+    # loop until all models have the same length
+    for model in model_names:
+        # See number of hyperparameters in model, subtract one for channel
+        Nhyper_in_model = len(model.split('/'))-1
+        kde_hold = getFromDict(kde_models, model.split('/'))
+        # loop until this model has all the hyperparam levels as well
+        while Nhyper_in_model < Nhyper:
+            # remove kde model from old level
+            setInDict(kde_models, model.split('/'), {})
+            model_names.remove(model)
+            for new_hyperparam in hyperparam_dict[Nhyper_in_model]:
+                # copy the same kde model for the higher hyperparam level
+                new_kde = deepcopy(kde_hold)
+                new_level = model.split('/') + [new_hyperparam]
+                setInDict(kde_models, new_level, new_kde)
+                # add new model name
+                model_names.append(model+'/'+new_hyperparam)
+            Nhyper_in_model += 1
+        model_names.sort()
+    # see if all models are at deepest level else repeat
+    all_models_at_deepest = all([len(x.split('/')[1:])==Nhyper for x in model_names])
 
-# FIXME: Once I have the alpha models, do this!
 
 # --- Do the sampling!
 
@@ -244,6 +284,40 @@ submodels_dict = sampler.submodels_dict
 for hyper_idx in list(submodels_dict.keys()):
     samples[:,:,hyper_idx] = np.floor(samples[:,:,hyper_idx]).astype(int)
 
+# FIXME: need to get the conversion factors working
+"""# get the conversion factors for a given submodel to normalize to unity so we can convert betas from detectable populations to underlying populations
+print('Converting from detectable branching fractions to underlying brancing fractions...\n')
+samples_detectable = samples.copy()
+smdls = sorted(list(set([x.split('/',1)[1] for x in model_names])))
+Nreweight=0
+for smdl in smdls:
+    convfac_per_smdl = []
+    # get conversion factors
+    for channel in channels:
+        smdl_list = [channel] + smdl.split('/')
+        convfac_per_smdl.append(getFromDict(kde_models, smdl_list)._detectable_convfac)
+    # normalize conversion factors and store in KDE objects
+    #convfac_normed /= np.sum(convfac_normed)
+    #for cidx, channel in enumerate(channels):
+    #    smdl_list = [channel] + smdl.split('/')
+    #    getFromDict(kde_models, smdl_list)._detectable_convfac_normed = convfac_normed[cidx]
+    # change the beta values in the posterior samples
+    smdl_list = smdl.split('/')
+    smdl_param_idxs = []
+    for hyper_idx in np.arange(len(smdl_list)):
+        smdl_param = submodels_dict[hyper_idx]
+        smdl_param_idxs.append(list(smdl_param.values()).index(smdl_list[hyper_idx]))
+    for i in np.arange(samples.shape[0]):
+        for j in np.arange(samples.shape[1]):
+            if samples[i,j,:len(smdl_param_idxs)] == smdl_param_idxs:
+                Nreweight += 1
+                samples[i,j,len(smdl_param_idxs):] /= convfac_per_smdl
+                samples[i,j,len(smdl_param_idxs):] /= np.sum(samples[i,j,len(smdl_param_idxs):])
+
+print(Nreweight)
+print(samples.shape[0]*samples.shape[1])
+samples = samples_detectable
+"""
 
 # Plot samples and histograms of betas per model
 if make_plots==True:
@@ -252,7 +326,6 @@ if make_plots==True:
 
 
 # reshape to have all steps from all walkers in a single dimension
-# (note that we added a dim for the last beta that we synthesized)
 samples = samples.reshape((samples.shape[0] * samples.shape[1], \
                                 samples.shape[2]))
 lnprb = lnprb.reshape((lnprb.shape[0] * lnprb.shape[1]))
@@ -272,7 +345,7 @@ if verbose:
             if idx==0:
                 matching_samps = samples[samples[:,idx] == hyper_idx]
             else:
-                matching_samps = matchin_samps[matching_samps[:,idx] == hyper_idx]
+                matching_samps = matching_samps[matching_samps[:,idx] == hyper_idx]
         # get counts in this model
         counts = matching_samps.shape[0]
         recovered_vals[smdl]['counts'] = counts

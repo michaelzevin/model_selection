@@ -175,16 +175,6 @@ def lnlike(x, data, kde_models, submodels_dict, channels):
     betas_tmp = np.asarray(x[len(submodels_dict):])
     betas_tmp = np.append(betas_tmp, 1-np.sum(betas_tmp))
 
-    # convert to branching fractions of underlying distributions
-    # FIXME something is wrong here
-    #underlying_betas = []
-    #for channel, beta in zip(channels, betas_tmp):
-    #    model_list_tmp = model_list.copy()
-    #    model_list_tmp.insert(0,channel)
-    #    smdl = reduce(operator.getitem, model_list_tmp, kde_models)
-    #    underlying_betas.append(beta / smdl._detectable_convfac)
-    #betas_tmp = np.asarray(underlying_betas) / np.sum(underlying_betas)
-
     # Likelihood
     prob = np.zeros(data.shape[0])
 

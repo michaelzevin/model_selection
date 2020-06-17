@@ -21,7 +21,7 @@ import astropy.units as u
 cosmo = cosmology.Planck15
 
 # Need to ensure all parameters are normalized over the same range
-_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,5)}
+_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
 _KDE_maxsamps = int(1e4)
@@ -103,8 +103,8 @@ class KDEModel(Model):
         # This custom KDE handles multiple dimensions, bounds, and weights
         # and takes in samples (Ndim x Nsamps)
         # We save both the detection-weighted and unweighted KDEs, as we'll need both
-        kde = Bounded_Nd_kde(samples.T, weights=weights, bounds=self._param_bounds)
-        kde_unweighted = Bounded_Nd_kde(unweighted_samples.T, weights=None, bounds=self._param_bounds)
+        kde = Bounded_Nd_kde(samples.T, weights=weights, bw_method=0.01, bounds=self._param_bounds)
+        kde_unweighted = Bounded_Nd_kde(unweighted_samples.T, weights=None, bw_method=0.01, bounds=self._param_bounds)
         self._pdf = lambda x: kde(normalize_samples(x, self._param_bounds).T) / pdf_scale
         self._pdf_unweighted = lambda x: kde_unweighted(normalize_samples(x, self._param_bounds).T) / pdf_scale
         self._kde = kde
@@ -193,11 +193,16 @@ class KDEModel(Model):
 
         return KDEModel(label, self._samples[params], self._unweighted_samples[params], self._weights, self._detectable_convfac)
 
-    def generate_observations(self, Nobs, detector='design_network', psd_path=None):
+    def generate_observations(self, Nobs, detector='design_network', psd_path=None, from_detectable=False):
         """
         Generates samples from KDE model. This will generated Nobs samples, storing the attribute 'self._observations' with dimensions [Nobs x Nparam]. 
         """
         # FIXME I'll need to change this up to work for single parameters...
+
+        if from_detectable==True:
+            observations = self.sample(Nobs, weighted_kde=True)
+            self._observations = observations
+            return observations
 
         params = list(self._samples.keys())
 
