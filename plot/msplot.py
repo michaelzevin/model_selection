@@ -22,7 +22,7 @@ cp = sns.color_palette("colorblind", 6)
 _basepath, _ = os.path.split(os.path.realpath(__file__))
 plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 
-_param_bounds = {"mchirp": (0,70), "q": (0,1), "chieff": (-1,1), "z": (0,3)}
+_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
 "chieff": r"$\chi_{\rm eff}$", "z": r"$z$"}
 _Nsamps = 1000
@@ -40,23 +40,30 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
     If more than one population parameter is being considered, specify in list 'fixed_vals' (e.g., ['alpha1']).
     """
     # filter to only get models for one population parameter
+    models_to_plot = model_names.copy()
+    models_to_plot = []
     if fixed_vals:
-        for fixed_val in fixed_vals:
-            model_names = [x for x in model_names if fixed_val in x]
-    model_names.sort()
+        for model in model_names:
+            ctr = len(model.split('/'))-2
+            for fval in fixed_vals:
+                if fval in model.split('/'):
+                    ctr -= 1
+            if ctr==0:
+                models_to_plot.append(model)
+    models_to_plot.sort()
 
     channels = list(kde_models.keys())
     Nchannels = int(len(kde_models))
     Nparams = int(len(params))
-    Nsbmdls = int(len(model_names)/len(kde_models))
+    Nsbmdls = int(len(models_to_plot)/len(kde_models))
 
     fig, axs = plt.subplots(Nsbmdls, Nparams, figsize=(6*Nparams, 5*Nsbmdls))
+    pdb.set_trace()
 
     # loop over all models...
-    pdb.set_trace()
     print('   plotting population models...')
     for cidx, channel in enumerate(channels):
-        channel_smdls = [x for x in model_names if channel+'/' in x]
+        channel_smdls = [x for x in models_to_plot if channel+'/' in x]
         for idx, model in enumerate(channel_smdls):
             kde = getFromDict(kde_models, model.split('/'))
 
@@ -71,7 +78,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                 else:
                     ax = axs[idx,pidx]
 
-                # marginalize the kde
+                # marginalize the kde (this redoes the KDE in 1D)
                 marg_kde = kde.marginalize([param])
 
                 # evaluate the marginalized kde over the param range
@@ -101,7 +108,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                     if idx==Nsbmdls-1:
                         ax.set_xlabel(_labels_dict[param], fontsize=40)
                     if pidx==0:
-                        ax.set_ylabel(model.split('/', 1)[1], fontsize=50)
+                        ax.set_ylabel(model.split('/')[1], fontsize=50)
                     if idx==0:
                         ax.set_title(_labels_dict[param], fontsize=40)
 
@@ -166,7 +173,11 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
         model0_name = model0[channels[0]].label.split('/', 1)[1]
     else:
         model0_name='GW observations'
-    plt.suptitle("Sampled model: {0:s}".format(model0_name), fontsize=55)
+    if fixed_vals:
+        plt.suptitle("Sampled model: {0:s}".format(model0_name)+'\n (fixed values: '+\
+                            ','.join('{}'.format(x) for x in fixed_vals)+')', fontsize=55)
+    else:
+        plt.suptitle("Sampled model: {0:s}".format(model0_name), fontsize=55)
     if name:
         fname = 'marginalized_kdes_'+name+'.png'
     else:

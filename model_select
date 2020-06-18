@@ -222,12 +222,12 @@ else:
 
 
 # Plot the KDEs and observations
-# FIXME this needs work
 if make_plots==True:
     print("Plotting marginalized KDE models...")
     msplot.plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, \
            model0, name=args.name, fixed_vals=['alpha10'], plot_obs=True, plot_obs_samples=False)
     print("")
+pdb.set_trace()
 
 
 # --- Freeze sample evaluations in each model. 

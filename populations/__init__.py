@@ -24,7 +24,7 @@ cosmo = cosmology.Planck15
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
-_KDE_maxsamps = int(1e4)
+_KDE_maxsamps = int(1e6)
 
 """
 Set of classes used to construct statistical models of populations.
@@ -87,6 +87,8 @@ class KDEModel(Model):
         self._posterior_sigmas = [_posterior_sigmas[param] for param in samples.columns]
         samples = normalize_samples(np.asarray(samples), self._param_bounds)
         unweighted_samples = normalize_samples(np.asarray(unweighted_samples), self._param_bounds)
+        # also need to scale pdf by parameter range, so save this
+        pdf_scale = scale_to_unity(self._param_bounds)
 
         # add a little bit of scatter to samples that have the exact same values, as this will freak out the KDE generator
         for idx, param in enumerate(samples.T):
@@ -95,9 +97,6 @@ class KDEModel(Model):
         for idx, param in enumerate(unweighted_samples.T):
             if len(np.unique(param))==1:
                 unweighted_samples[:,idx] += np.random.normal(loc=0.0, scale=1e-5, size=unweighted_samples.shape[0])
-
-        # also need to scale pdf by parameter range, so save this
-        pdf_scale = scale_to_unity(self._param_bounds)
 
         # Get the KDE objects, specify function for pdf
         # This custom KDE handles multiple dimensions, bounds, and weights
@@ -128,8 +127,7 @@ class KDEModel(Model):
         """
         # FIXME this needs to be expanded to draw from the unweighted KDE and calculate SNRs
         kde = self._kde if weighted_kde==True else self._kde_unweighted
-        samps_norm = kde.bounded_resample(N).T
-        samps = denormalize_samples(samps_norm, self._param_bounds)
+        samps = denormalize_samples(kde.bounded_resample(N).T, self._param_bounds)
         return samps
 
     def rel_frac(self, beta):
