@@ -24,7 +24,7 @@ cosmo = cosmology.Planck15
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
-_KDE_maxsamps = int(1e6)
+_KDE_maxsamps = int(1e5)
 
 """
 Set of classes used to construct statistical models of populations.
@@ -42,7 +42,7 @@ class Model(object):
 
 class KDEModel(Model):
     @staticmethod
-    def from_samples(label, samples, params, weighting=None, **kwargs):
+    def from_samples(label, samples, params, weighting=None, normalize=False, **kwargs):
         """
         Generate a KDE model instance from :samples:, where :params: are \
         series in the :samples: dataframe. Additional :kwargs: are passed to \
@@ -71,24 +71,29 @@ class KDEModel(Model):
         kde_samples_unweighted = unweighted_samples[params]
         weights = samples[weighting] if weighting else None
 
-        return KDEModel(label, kde_samples, kde_samples_unweighted, weights, detectable_convfac)
+        return KDEModel(label, kde_samples, kde_samples_unweighted, weights, detectable_convfac, normalize=normalize)
 
 
-    def __init__(self, label, samples, unweighted_samples, weights=None, detectable_convfac=1):
+    def __init__(self, label, samples, unweighted_samples, weights=None, detectable_convfac=1, normalize=False):
         super()
         self.label = label
         self._samples = samples
         self._unweighted_samples = unweighted_samples
         self._weights = weights
         self._detectable_convfac = detectable_convfac
+        self._normalize = normalize
 
         # Normalize data s.t. they all are on the unit cube
         self._param_bounds = [_param_bounds[param] for param in samples.keys()]
         self._posterior_sigmas = [_posterior_sigmas[param] for param in samples.columns]
-        samples = normalize_samples(np.asarray(samples), self._param_bounds)
-        unweighted_samples = normalize_samples(np.asarray(unweighted_samples), self._param_bounds)
-        # also need to scale pdf by parameter range, so save this
-        pdf_scale = scale_to_unity(self._param_bounds)
+        if self._normalize==True:
+            samples = normalize_samples(np.asarray(samples), self._param_bounds)
+            unweighted_samples = normalize_samples(np.asarray(unweighted_samples), self._param_bounds)
+            # also need to scale pdf by parameter range, so save this
+            pdf_scale = scale_to_unity(self._param_bounds)
+        else:
+            samples = np.asarray(samples)
+            unweighted_samples = np.asarray(unweighted_samples)
 
         # add a little bit of scatter to samples that have the exact same values, as this will freak out the KDE generator
         for idx, param in enumerate(samples.T):
@@ -104,10 +109,15 @@ class KDEModel(Model):
         # We save both the detection-weighted and unweighted KDEs, as we'll need both
         kde = Bounded_Nd_kde(samples.T, weights=weights, bw_method=0.01, bounds=self._param_bounds)
         kde_unweighted = Bounded_Nd_kde(unweighted_samples.T, weights=None, bw_method=0.01, bounds=self._param_bounds)
-        self._pdf = lambda x: kde(normalize_samples(x, self._param_bounds).T) / pdf_scale
-        self._pdf_unweighted = lambda x: kde_unweighted(normalize_samples(x, self._param_bounds).T) / pdf_scale
         self._kde = kde
         self._kde_unweighted = kde_unweighted
+
+        if self._normalize==True:
+            self._pdf = lambda x: kde(normalize_samples(x, self._param_bounds).T) / pdf_scale
+            self._pdf_unweighted = lambda x: kde_unweighted(normalize_samples(x, self._param_bounds).T) / pdf_scale
+        else:
+            self._pdf =  lambda x: kde(x.T)
+            self._pdf_unweighted =  lambda x: kde_unweighted(x.T)
 
         # keep bounds of the samples
         self._bin_edges = []
@@ -127,7 +137,10 @@ class KDEModel(Model):
         """
         # FIXME this needs to be expanded to draw from the unweighted KDE and calculate SNRs
         kde = self._kde if weighted_kde==True else self._kde_unweighted
-        samps = denormalize_samples(kde.bounded_resample(N).T, self._param_bounds)
+        if self._normalize==True:
+            samps = denormalize_samples(kde.bounded_resample(N).T, self._param_bounds)
+        else:
+            samps = kde.bounded_resample(N).T
         return samps
 
     def rel_frac(self, beta):
@@ -189,7 +202,7 @@ class KDEModel(Model):
             label += '_'+p
         label += '_marginal'
 
-        return KDEModel(label, self._samples[params], self._unweighted_samples[params], self._weights, self._detectable_convfac)
+        return KDEModel(label, self._samples[params], self._unweighted_samples[params], self._weights, self._detectable_convfac, self._normalize)
 
     def generate_observations(self, Nobs, detector='design_network', psd_path=None, from_detectable=False):
         """

@@ -62,7 +62,8 @@ def setInDict(dataDict, mapList, value):
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
 
 # --- Load in models/kdemodels into dict structure: models[model][channel]
-model_names, models, kde_models, = bbh_models.get_models(args.file_path, args.specific_channels, args.params, spin_distr=args.spinmag, weighting=args.weights, verbose=verbose)
+# `normalize` argument normalizes KDEs on unit cube
+model_names, models, kde_models, = bbh_models.get_models(args.file_path, args.specific_channels, args.params, spin_distr=args.spinmag, weighting=args.weights, normalize=False, verbose=verbose)
 model_names.sort()
 channels = sorted(list(models.keys()))
 params = args.params
@@ -227,7 +228,6 @@ if make_plots==True:
     msplot.plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, \
            model0, name=args.name, fixed_vals=['alpha10'], plot_obs=True, plot_obs_samples=False)
     print("")
-pdb.set_trace()
 
 
 # --- Freeze sample evaluations in each model. 

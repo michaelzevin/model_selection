@@ -25,7 +25,7 @@ plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
 "chieff": r"$\chi_{\rm eff}$", "z": r"$z$"}
-_Nsamps = 1000
+_Nsamps = 10000
 
 # --- Useful functions for accessing items in dictionary
 def getFromDict(dataDict, mapList):
@@ -58,7 +58,6 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
     Nsbmdls = int(len(models_to_plot)/len(kde_models))
 
     fig, axs = plt.subplots(Nsbmdls, Nparams, figsize=(6*Nparams, 5*Nsbmdls))
-    pdb.set_trace()
 
     # loop over all models...
     print('   plotting population models...')
