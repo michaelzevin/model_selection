@@ -39,6 +39,7 @@ _PSDs_for_pdet = ['midhighlatelow','midhighlatelow_network','design','design_net
 argp = argparse.ArgumentParser()
 argp.add_argument("--file-path", type=str, required=True, help="Path to population models that need detection weights.")
 argp.add_argument("--psd-path", type=str, required=True, help="Path to directory  with PSD files, saved in same format as Observing Scenarios data release.")
+argp.add_argument("--model", type=str, default=None, help="HDF key for the model you wish to run selection effects on. If None, will run for all models the file.")
 argp.add_argument("--Ntrials", type=int, default=1000, help="Define the number of monte carlo trails used for calculating the average SNR. Default=1000")
 argp.add_argument("--multiproc", type=int, default=1, help="Number of cores you want to use. Default=1")
 
@@ -53,11 +54,14 @@ def find_submodels(name, obj):
     if isinstance(obj, h5py.Dataset):
         models.append(name.rsplit('/', 1)[0])
 
-f = h5py.File(args.file_path, 'r')
-f.visititems(find_submodels)
-# get all unique models
-models = sorted(list(set(models)))
-f.close()
+if args.model is not None:
+    models.append(args.model)
+else:
+    f = h5py.File(args.file_path, 'r')
+    f.visititems(find_submodels)
+    # get all unique models
+    models = sorted(list(set(models)))
+    f.close()
 
 
 for model in models:
