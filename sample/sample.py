@@ -18,7 +18,7 @@ _likelihood = 'emcee_lnlike'
 _posterior = 'emcee_lnpost'
 
 _nwalkers = 16
-_nsteps = 2000
+_nsteps = 10000
 _fburnin = 0.2
 
 """
