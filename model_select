@@ -322,7 +322,8 @@ samples = samples_detectable
 # Plot samples and histograms of betas per model
 if make_plots==True:
     print("Plotting samples...\n")
-    msplot.plot_samples(samples, submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=0)
+    for hyper_idx in list(submodels_dict.keys()):
+        msplot.plot_samples(samples, submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx)
 
 
 # reshape to have all steps from all walkers in a single dimension

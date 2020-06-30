@@ -271,14 +271,20 @@ def plot_samples(samples, submodels_dict, model_names, channels, model0, name=No
 
     # title
     if model0:
-        model0_name = model0_name = model0[channels[0]].label.split('/', 1)[1]
+        # find the deepest model
+        channel_depth = 0
+        for channel in channels:
+            if len(model0[channel].label.split('/')) > channel_depth:
+                channel_depth = len(model0[channel].label.split('/'))
+                deepest_channel = channel
+        model0_name = model0[deepest_channel].label.split('/', 1)[1]
     else:
         model0_name='GW observations'
     plt.suptitle("True model: {0:s}".format(model0_name), fontsize=40)
     if name:
-        fname = 'samples_'+name+'.png'
+        fname = 'samples_'+name+'_hyperidx'+str(hyper_idx)+'.png'
     else:
-        fname = 'samples.png'
+        fname = 'samples_hyperidx'+str(hyper_idx)+'.png'
     plt.subplots_adjust(bottom=0.15)
     plt.savefig(fname)
     plt.close()
