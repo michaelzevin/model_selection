@@ -100,7 +100,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
 
                 # Format plot
                 if idx==0 and pidx==(len(params)-1):
-                    ax.legend(prop={'size':30})
+                    ax.legend(prop={'size':30}, loc='center', bbox_to_anchor=(1.0,1.0))
                 if cidx==Nchannels-1:
                     ax.set_xlim(*_param_bounds[param])
                     ax.set_ylim(bottom=0)#, top=pdf_max)
@@ -256,7 +256,7 @@ def plot_samples(samples, submodels_dict, model_names, channels, model0, name=No
 
         # legend
         if cidx == 0:
-            ax_marg.legend(loc='upper right', prop={'size':12})
+            ax_marg.legend(loc='center', bbox_to_anchor=[1.0,1.0], prop={'size':10})
 
         if cidx == len(channels)-1:
             ax_chain.set_xlabel('Step', fontsize=30)
