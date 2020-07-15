@@ -46,7 +46,7 @@ def get_params(df, params):
     return df
 
 
-def get_models(file_path, specific_channels, params, spin_distr=None, weighting=None, normalize=False, verbose=False, **kwargs):
+def get_models(file_path, specific_channels, params, spin_distr=None, sensitivity=None, normalize=False, verbose=False, **kwargs):
     """
     Call this to get all the models and submodels, as well
     as KDEs of these models, packed inside of dictionaries labelled in the
@@ -114,7 +114,7 @@ def get_models(file_path, specific_channels, params, spin_distr=None, weighting=
                     # if we are on the last level, save kdes
                     df = current_level[part]
                     label = '/'.join(smdl_list)
-                    mdl = KDEModel.from_samples(label, df, params, weighting=weighting, normalize=normalize)
+                    mdl = KDEModel.from_samples(label, df, params, sensitivity=sensitivity, normalize=normalize)
                     current_level_kde[part] = mdl
                 else:
                     current_level_kde[part] = {}

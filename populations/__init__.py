@@ -24,7 +24,7 @@ cosmo = cosmology.Planck15
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
-_KDE_maxsamps = int(1e5)
+_maxsamps = int(1e6)
 
 """
 Set of classes used to construct statistical models of populations.
@@ -42,43 +42,65 @@ class Model(object):
 
 class KDEModel(Model):
     @staticmethod
-    def from_samples(label, samples, params, weighting=None, normalize=False, **kwargs):
+    def from_samples(label, samples, params, sensitivity=None, normalize=False, **kwargs):
         """
         Generate a KDE model instance from :samples:, where :params: are \
         series in the :samples: dataframe. Additional :kwargs: are passed to \
-        nothing at the moment. If :weighting: is provided, will weight the \
-        samples used to generate the KDE according to the column with name \
-        specified by :weighting: in the :samples: dataframe.
+        nothing at the moment. If 'weight' is a column in your population \
+        model, will assume this is the cosmological weight of each sample, and \
+        will include this in the construction of all your KDEs. If :sensitivity: \
+        is provided, samples used to generate the detection-weighted KDE will be \
+        weighted according to the key in the argument :sensitivity:.
         """
-        unweighted_samples = samples.copy()
-        if weighting == None:
-            detectable_convfac = 1.0
+        # check that the provdided sensitivity is in the dataframe
+        if sensitivity is not None:
+            if sensitivity not in samples.columns:
+                raise ValueError("{0:s} was specified for your detection weights, but cannot find this column in the samples datafarme!")
+                
+        # get the conversion factor between the underlying and detectable populatin
+        if sensitivity is not None:
+            # if cosmological weights are provided, do mock draws from the pop
+            if 'weight' in samples.keys():
+                mock_samp = samples.sample(int(1e6), weights=samples['weight'], replace=True)
+            else:
+                mock_samp = samples.sample(int(1e6), replace=True)
+            detectable_convfac = np.sum(mock_samp[sensitivity]) / len(mock_samp)
         else:
-            if weighting not in samples.columns:
-                raise ValueError("{0:s} was specified for your weights, but cannot find this column in the samples datafarme!")
-            # only use samples in KDE that have weights greater than 0
-            samples = samples.loc[samples[weighting] > 0]
-            # save the conversion factor from the fully marginalized underlying population to the fully marginalized detected population
-            detectable_convfac = np.sum(samples[weighting]) / len(unweighted_samples)
+            detectable_convfac = 1.0
 
-        # downsample so the KDE construction doesn't take forever
-        if len(samples) > _KDE_maxsamps:
-            samples = samples.sample(_KDE_maxsamps)
-        if len(unweighted_samples) > _KDE_maxsamps:
-            unweighted_samples = unweighted_samples.sample(_KDE_maxsamps)
+        # downsample population 
+        if len(samples) > _max_samps:
+            samples = samples.sample(_maxsamps)
 
+        ### GET WEIGHTS ###
+        # if cosmological weights are provided...
+        if 'weight' in samples.keys():
+            if sensitivity == None:
+                weights = samples['weight']
+            else:
+                weights = (samples['weight'] / np.sum(samples['weight'])) * (samples[sensitivity] / np.sum(samples[sensitivity]))
+
+        # if cosmological weights are not provided,
+        # assume they've already been accounted for
+        elif 'weight' not in samples.keys():
+            if sensitivity == None:
+                weights = np.ones(len(samples))
+            else:
+                weights = samples[sensitivity]
+
+        # make sure weights sum to unity
+        weights /= np.sum(weights)
+
+        # get samples for the parameters in question
         kde_samples = samples[params]
-        kde_samples_unweighted = unweighted_samples[params]
-        weights = samples[weighting] if weighting else None
 
-        return KDEModel(label, kde_samples, kde_samples_unweighted, weights, detectable_convfac, normalize=normalize)
+        return KDEModel(label, kde_samples, weights, detectable_convfac, normalize=normalize)
 
 
-    def __init__(self, label, samples, unweighted_samples, weights=None, detectable_convfac=1, normalize=False):
+    def __init__(self, label, samples, weights, detectable_convfac=1, normalize=False):
         super()
         self.label = label
         self._samples = samples
-        self._unweighted_samples = unweighted_samples
         self._weights = weights
         self._detectable_convfac = detectable_convfac
         self._normalize = normalize
@@ -88,27 +110,22 @@ class KDEModel(Model):
         self._posterior_sigmas = [_posterior_sigmas[param] for param in samples.columns]
         if self._normalize==True:
             samples = normalize_samples(np.asarray(samples), self._param_bounds)
-            unweighted_samples = normalize_samples(np.asarray(unweighted_samples), self._param_bounds)
             # also need to scale pdf by parameter range, so save this
             pdf_scale = scale_to_unity(self._param_bounds)
         else:
             samples = np.asarray(samples)
-            unweighted_samples = np.asarray(unweighted_samples)
 
         # add a little bit of scatter to samples that have the exact same values, as this will freak out the KDE generator
         for idx, param in enumerate(samples.T):
             if len(np.unique(param))==1:
                 samples[:,idx] += np.random.normal(loc=0.0, scale=1e-5, size=samples.shape[0])
-        for idx, param in enumerate(unweighted_samples.T):
-            if len(np.unique(param))==1:
-                unweighted_samples[:,idx] += np.random.normal(loc=0.0, scale=1e-5, size=unweighted_samples.shape[0])
 
         # Get the KDE objects, specify function for pdf
         # This custom KDE handles multiple dimensions, bounds, and weights
         # and takes in samples (Ndim x Nsamps)
         # We save both the detection-weighted and unweighted KDEs, as we'll need both
         kde = Bounded_Nd_kde(samples.T, weights=weights, bw_method=0.01, bounds=self._param_bounds)
-        kde_unweighted = Bounded_Nd_kde(unweighted_samples.T, weights=None, bw_method=0.01, bounds=self._param_bounds)
+        kde_unweighted = Bounded_Nd_kde(samples.T, weights=None, bw_method=0.01, bounds=self._param_bounds)
         self._kde = kde
         self._kde_unweighted = kde_unweighted
 
@@ -202,7 +219,7 @@ class KDEModel(Model):
             label += '_'+p
         label += '_marginal'
 
-        return KDEModel(label, self._samples[params], self._unweighted_samples[params], self._weights, self._detectable_convfac, self._normalize)
+        return KDEModel(label, self._samples[params], self._weights, self._detectable_convfac, self._normalize)
 
     def generate_observations(self, Nobs, detector='design_network', psd_path=None, from_detectable=False):
         """
