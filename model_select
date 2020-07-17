@@ -210,13 +210,13 @@ else:
         Nobs_per_channel = int(np.round(args.Nobs * model0[channel].rel_frac))
         if idx==0:
             observations = model0[channel].generate_observations(Nobs_per_channel, \
-                detector=args.sensitivity, psd_path=args.psd_path, from_detectable=True)
+                detector=args.sensitivity, psd_path=args.psd_path, from_detectable=False)
             obsdata = model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)
         else:
             observations = np.concatenate((observations, \
                 model0[channel].generate_observations(Nobs_per_channel, \
-                detector=args.sensitivity, psd_path=args.psd_path, from_detectable=True)))
+                detector=args.sensitivity, psd_path=args.psd_path, from_detectable=False)))
             obsdata = np.concatenate((obsdata, \
                 model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)))
