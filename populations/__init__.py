@@ -165,8 +165,15 @@ class KDEModel(Model):
     def rel_frac(self, beta):
         """
         Stores the relative fraction of samples that are drawn from this KDE model
+        This is the 'detectable' branching fraction
         """
         self.rel_frac = beta
+
+    def underlying_frac(self, beta):
+        """
+        Stores the branching fraction of the underlying population
+        """
+        self.underlying_frac = beta
 
     def freeze(self, data, data_pdf=None):
         """

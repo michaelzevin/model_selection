@@ -36,6 +36,7 @@ argp.add_argument("-N", "--Nsamps", type=int, default=100, help="Number of sampl
 argp.add_argument("--sensitivity", type=str, help="Name of column in dataframe of detection probabilities, which should have the same name as the network sensitivity and configuration you wish to use. This is used to construct a 'detection-weighted' kde. These weights have the same name as the network sensitivity from the LVC Observing Scenarios, and have '_network' appended if using a 3-detector configuration. Default=None.")
 argp.add_argument("--uncertainty", type=str, help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posteriors'), or from a mock gaussian with the mean and sigma of observations ('gaussian'). For mock observations, you can choose to smear according to the average spread in parameters from current GW observations ('gwevents'), or use a gaussian with an SNR-dependent sigma ('snr'). Default=None.")
 argp.add_argument("--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the spin magnitude is not specified. Default is None.")
+argp.add_argument("--detectable-beta", action="store_true", help="If True, will assume the supplied branching fractions represent the branching fractions of *detected* events. If False, will assume the supplied branching fractions represent the branching fractions of *underlying* events. Default is False.")
 argp.add_argument("--make-plots", action="store_true", help="Determines whether to make accompanying plots. Default is False.")
 argp.add_argument("-V", "--verbose", action="store_true", help="Determines whether to be verbose in the code. Default is False.")
 argp.add_argument("-S", "--save-samples", action="store_true", help="Save all the samples rather than just the summary statistics. Default is False.")
@@ -155,34 +156,49 @@ if not gwobs:
     if len(betas) != len(channels):
         betas.append(1.0 - np.sum(betas))
 
-# --- If model0 specified, save relative fractions for each KDE model, and store model0
+# --- If model0 specified, store KDE models in `model0` dict and save relative fractions
 if not gwobs:
     if verbose:
         print("Saving relative fractions and storing true model...\n")
 
-    model0 = {}
     # since channels are sorted alphabetically, branching fractions are defined in the same order
+    model0 = {}
+    detectable_convfacs = []
     for idx, channel in enumerate(channels):
         channel_mdls = [x for x in model_names if channel+'/' in x]
         for model in channel_mdls:
             smdl = model.split('/',1)[1]
-            beta = betas[channels.index(channel)]
-            # store relative fraction
-            getFromDict(kde_models, model.split('/')).rel_frac(beta)
             # print info about model0
             if (smdl in args.model0):
                 model0[channel] = getFromDict(kde_models, model.split('/'))
-                if verbose:
-                    if idx==0:
-                        print("'{0:s}' set as true model".format(args.model0))
-                        print("  model range:")
-                    print("    {0:s} ({1:s}, beta={2:0.2f})".format(channel, smdl, beta))
-                    for param in args.params:
-                        print("      {0:s}: {1:0.3f} - {2:0.3f}".format(param,\
-                                getFromDict(kde_models, model.split('/')).sample_range[param][0],\
-                                getFromDict(kde_models, model.split('/')).sample_range[param][1]))
-                    if idx==len(betas)-1:
-                        print("")
+                detectable_convfacs.append(model0[channel].detectable_convfac)
+
+    # determine whether supplied branching fractions are for the detectable or the underlying population
+    if args.detectable_beta==True:
+        detectable_betas = np.asarray(betas)
+        underlying_betas = np.asarray(betas) / np.asarray(detectable_convfacs)
+        underlying_betas /= np.sum(underlying_betas)
+    elif args.detectable_beta==False:
+        detectable_betas = np.asarray(betas) * np.asarray(detectable_convfacs)
+        detectable_betas /= np.sum(detectable_betas)
+        underlying_betas = np.asarray(betas)
+
+    # set branching fractions as attributes in KDEModels
+    for idx, channel in enumerate(channels):
+        model0[channel].rel_frac(detectable_betas[idx])
+        model0[channel].underlying_frac(underlying_betas[idx])
+
+    # print model0 info
+    if verbose:
+        print("'{0:s}' set as true model".format(args.model0))
+        print("  model ranges:")
+        for channel, mdl in model0.items():
+            print("    {0:s} (beta={1:0.4f}, det_frac={2:0.4f})".format(channel, mdl.underlying_frac, mdl.rel_frac))
+            for param in args.params:
+                print("      {0:s}: {1:0.3f} - {2:0.3f}".format(param,\
+                        mdl.sample_range[param][0], mdl.sample_range[param][1]))
+        print("")
+
 
 # --- Generate observations ([observations, params, samples])
 if verbose:
@@ -194,16 +210,16 @@ if gwobs:
     observations, obsdata, events = gw_obs.generate_observations(params, args.gwpath, \
                                             args.Nsamps, args.uncertainty)
     if verbose:
-        print("Using the following {0:d} GW observations for \
-inference:".format(len(events)))
+        print("Using the following {0:d} GW observations for inference:".format(len(events)))
         print(*events, sep=', ')
         print("")
 
 else:
     if verbose:
-        print("Drawing {0:d} observations from the true model...\n".format(int(args.Nobs)))
+        print("Drawing {0:d} observations from model0, using the '{1:s}' method for measurement uncertainty...\n".format(int(args.Nobs), args.uncertainty))
     for idx, channel in enumerate(model0):
         # first check that the branching fractions * Nobs are integers
+        # FIXME: should I do this more probabilistically?
         if not (args.Nobs*model0[channel].rel_frac).is_integer():
             warnings.warn('Number of observations is not divisble by branching fractions, this may result in drawing a number of samples slighty different than what was specified!')
         Nobs_per_channel = int(np.round(args.Nobs * model0[channel].rel_frac))
@@ -328,9 +344,9 @@ if verbose:
 
     # print everything
     for smdl in sorted(smdls):
-        counts = recovered_vals[smdl]['counts']
-        betas = recovered_vals[smdl]['betas']
-        print("  Model {0:s}: {1:d} samples, betas={2}".format(smdl, counts, list(betas.items())))
+        sample_counts = recovered_vals[smdl]['counts']
+        sample_betas = recovered_vals[smdl]['betas']
+        print("  Model {0:s}: {1:d} samples, betas={2}".format(smdl, sample_counts, list(sample_betas.items())))
     print("")
 
 

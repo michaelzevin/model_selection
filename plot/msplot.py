@@ -89,18 +89,27 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                 if model0 and (kde.label == model0[channel].label):
                     channel_model0_samples[:,pidx] = marg_kde.sample(int(kde.rel_frac*_Nsamps), weighted_kde=True).flatten()
 
-                # legend label
+                # labels and legend
+                I_am_legend = False
                 if model0:
-                    label = channel+r" ($\beta$={0:0.1f})".format(kde.rel_frac)
+                    if (kde.label == model0[channel].label) and (pidx==(len(params)-1)):
+                        label = channel+r" ($\beta$={0:0.1f})".format(kde.rel_frac)
+                        I_am_legend = True
+                    else:
+                        label=None
                 else:
-                    label = channel
+                    if idx==0 and pidx==(len(params)-1):
+                        label = channel
+                        I_am_legend = True
+                    else:
+                        label=None
 
                 # plot the kde
                 ax.plot(eval_pts.flatten(), pdf, color=cp[cidx], label=label)
 
                 # Format plot
-                if idx==0 and pidx==(len(params)-1):
-                    ax.legend(prop={'size':30}, loc='center', bbox_to_anchor=(1.0,1.0))
+                if I_am_legend==True:
+                    ax.legend(prop={'size':30}, loc='center', bbox_to_anchor=(1.0,0.5))
                 if cidx==Nchannels-1:
                     ax.set_xlim(*_param_bounds[param])
                     ax.set_ylim(bottom=0)#, top=pdf_max)
