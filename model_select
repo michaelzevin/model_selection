@@ -63,9 +63,9 @@ def setInDict(dataDict, mapList, value):
 
 # --- Load in models/kdemodels into dict structure: models[model][channel]
 # `normalize` argument normalizes KDEs on unit cube
-model_names, models, kde_models, = bbh_models.get_models(args.file_path, args.specific_channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=False, verbose=verbose)
+model_names, kde_models, = bbh_models.get_models(args.file_path, args.specific_channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=False, verbose=verbose)
 model_names.sort()
-channels = sorted(list(models.keys()))
+channels = sorted(list(kde_models.keys()))
 params = args.params
 hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
 Nhyper = np.max([len(x.split('/')) for x in hyperparams])
@@ -179,9 +179,9 @@ if not gwobs:
                         print("  model range:")
                     print("    {0:s} ({1:s}, beta={2:0.2f})".format(channel, smdl, beta))
                     for param in args.params:
-                        print("      {0:s}: {1:0.2f} - {2:0.2f}".format(param,\
-                                getFromDict(models, model.split('/'))[param].min(),\
-                                getFromDict(models, model.split('/'))[param].max()))
+                        print("      {0:s}: {1:0.3f} - {2:0.3f}".format(param,\
+                                getFromDict(kde_models, model.split('/')).sample_range[param][0],\
+                                getFromDict(kde_models, model.split('/')).sample_range[param][1]))
                     if idx==len(betas)-1:
                         print("")
 
@@ -192,7 +192,7 @@ if verbose:
 # Calls gw_obs.py to generate samples if argument is passed
 if gwobs:
     model0=None
-    obsdata, events = gw_obs.generate_observations(params, args.gwpath, \
+    observations, obsdata, events = gw_obs.generate_observations(params, args.gwpath, \
                                             args.Nsamps, args.uncertainty)
     if verbose:
         print("Using the following {0:d} GW observations for \
@@ -205,9 +205,9 @@ else:
         print("Drawing {0:d} observations from the true model...\n".format(int(args.Nobs)))
     for idx, channel in enumerate(model0):
         # first check that the branching fractions * Nobs are integers
-        if not (args.Nobs*model0[channel]._rel_frac).is_integer():
+        if not (args.Nobs*model0[channel].rel_frac).is_integer():
             warnings.warn('Number of observations is not divisble by branching fractions, this may result in drawing a number of samples slighty different than what was specified!')
-        Nobs_per_channel = int(np.round(args.Nobs * model0[channel]._rel_frac))
+        Nobs_per_channel = int(np.round(args.Nobs * model0[channel].rel_frac))
         if idx==0:
             observations = model0[channel].generate_observations(Nobs_per_channel, \
                 detector=args.sensitivity, psd_path=args.psd_path, from_detectable=True)
@@ -295,12 +295,12 @@ for smdl in smdls:
     # get conversion factors
     for channel in channels:
         smdl_list = [channel] + smdl.split('/')
-        convfac_per_smdl.append(getFromDict(kde_models, smdl_list)._detectable_convfac)
+        convfac_per_smdl.append(getFromDict(kde_models, smdl_list).detectable_convfac)
     # normalize conversion factors and store in KDE objects
     #convfac_normed /= np.sum(convfac_normed)
     #for cidx, channel in enumerate(channels):
     #    smdl_list = [channel] + smdl.split('/')
-    #    getFromDict(kde_models, smdl_list)._detectable_convfac_normed = convfac_normed[cidx]
+    #    getFromDict(kde_models, smdl_list).detectable_convfac_normed = convfac_normed[cidx]
     # change the beta values in the posterior samples
     smdl_list = smdl.split('/')
     smdl_param_idxs = []
@@ -388,7 +388,7 @@ if args.save_samples:
         info = np.append([str(args.model0)], [*events])
     else:
         info = np.append([str(args.model0)], \
-            [*[key+': '+str(model0[key]._rel_frac) for key in model0.keys()]])
+            [*[key+': '+str(model0[key].rel_frac) for key in model0.keys()]])
     info = [x.encode('utf-8') for x in info]
     bsgrp.attrs["model0_params"] = info
 

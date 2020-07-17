@@ -72,7 +72,8 @@ directory '{1:s}'!".format(gw,gwpath))
 is present in the directory '{1:s}'!".format(gw,gwpath))
 
 
-    # Set up samples for the specified smearing
+    # Set up samples for the specified smearing, as well as observations
+    observations = np.zeros((len(_events), len(params)))
     if not mesaurement_uncertainty:
         samples_shape = (len(_events), 1, len(params))
         samples=np.zeros(samples_shape)
@@ -100,6 +101,10 @@ observations!".format(mesaurement_uncertainty))
                 raise KeyError("Parameter {0:s} not found in the GW data, and \
 no transformations exist to generate it from the GW data!".format(p))
 
+        # get the median observations (need to return for later)
+        for pidx, p in enumerate(params):
+            observations[idx, pidx] = np.median(df[p])
+
         # delta function observations
         if not mesaurement_uncertainty:
             for pidx, p in enumerate(params):
@@ -120,5 +125,5 @@ no transformations exist to generate it from the GW data!".format(p))
                 else:
                     samples[idx, :, pidx] = df[p].sample(Nsamps, replace=True)
 
-    return samples, _events
+    return observations, samples, _events
 

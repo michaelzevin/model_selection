@@ -24,7 +24,8 @@ cosmo = cosmology.Planck15
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
-_maxsamps = int(1e6)
+_maxsamps = int(1e4)
+_kde_bandwidth = 0.01
 
 """
 Set of classes used to construct statistical models of populations.
@@ -69,49 +70,58 @@ class KDEModel(Model):
             detectable_convfac = 1.0
 
         # downsample population 
-        if len(samples) > _max_samps:
+        if len(samples) > _maxsamps:
             samples = samples.sample(_maxsamps)
 
         ### GET WEIGHTS ###
         # if cosmological weights are provided...
         if 'weight' in samples.keys():
-            if sensitivity == None:
-                weights = samples['weight']
-            else:
-                weights = (samples['weight'] / np.sum(samples['weight'])) * (samples[sensitivity] / np.sum(samples[sensitivity]))
-
-        # if cosmological weights are not provided,
-        # assume they've already been accounted for
-        elif 'weight' not in samples.keys():
-            if sensitivity == None:
-                weights = np.ones(len(samples))
-            else:
-                weights = samples[sensitivity]
-
-        # make sure weights sum to unity
-        weights /= np.sum(weights)
+            cosmo_weights = samples['weight'] / np.sum(samples['weight'])
+        else:
+            cosmo_weights = np.ones(len(samples)) / len(samples)
+        # if detection weights are provided...
+        if sensitivity is not None:
+            det_weights = samples[sensitivity] / np.sum(samples[sensitivity])
+        else:
+            det_weights = np.ones(len(samples)) / len(samples)
 
         # get samples for the parameters in question
         kde_samples = samples[params]
 
-        return KDEModel(label, kde_samples, weights, detectable_convfac, normalize=normalize)
+        return KDEModel(label, kde_samples, cosmo_weights, det_weights, detectable_convfac, normalize=normalize)
 
 
-    def __init__(self, label, samples, weights, detectable_convfac=1, normalize=False):
+    def __init__(self, label, samples, cosmo_weights=None, det_weights=None, detectable_convfac=1, normalize=False):
         super()
         self.label = label
-        self._samples = samples
-        self._weights = weights
-        self._detectable_convfac = detectable_convfac
-        self._normalize = normalize
+        self.samples = samples
+        self.cosmo_weights = cosmo_weights
+        self.det_weights = det_weights
+        self.detectable_convfac = detectable_convfac
+        self.normalize = normalize
+
+        # Save range of each parameter
+        self.sample_range = {}
+        for param in samples.keys():
+            self.sample_range[param] = (samples[param].min(), samples[param].max())
+
+        # Combine the cosmological and detection weights
+        if (cosmo_weights is not None) and (det_weights is not None):
+            combined_weights = cosmo_weights * det_weights
+        elif det_weights is not None:
+            combined_weights = det_weights
+        else:
+            combined_weights = np.ones(len(samples)) / len(samples)
+        combined_weights /= np.sum(combined_weights)
+        self.combined_weights = combined_weights
 
         # Normalize data s.t. they all are on the unit cube
-        self._param_bounds = [_param_bounds[param] for param in samples.keys()]
-        self._posterior_sigmas = [_posterior_sigmas[param] for param in samples.columns]
-        if self._normalize==True:
-            samples = normalize_samples(np.asarray(samples), self._param_bounds)
+        self.param_bounds = [_param_bounds[param] for param in samples.keys()]
+        self.posterior_sigmas = [_posterior_sigmas[param] for param in samples.columns]
+        if self.normalize==True:
+            samples = normalize_samples(np.asarray(samples), self.param_bounds)
             # also need to scale pdf by parameter range, so save this
-            pdf_scale = scale_to_unity(self._param_bounds)
+            pdf_scale = scale_to_unity(self.param_bounds)
         else:
             samples = np.asarray(samples)
 
@@ -123,39 +133,32 @@ class KDEModel(Model):
         # Get the KDE objects, specify function for pdf
         # This custom KDE handles multiple dimensions, bounds, and weights
         # and takes in samples (Ndim x Nsamps)
-        # We save both the detection-weighted and unweighted KDEs, as we'll need both
-        kde = Bounded_Nd_kde(samples.T, weights=weights, bw_method=0.01, bounds=self._param_bounds)
-        kde_unweighted = Bounded_Nd_kde(samples.T, weights=None, bw_method=0.01, bounds=self._param_bounds)
-        self._kde = kde
-        self._kde_unweighted = kde_unweighted
-
-        if self._normalize==True:
-            self._pdf = lambda x: kde(normalize_samples(x, self._param_bounds).T) / pdf_scale
-            self._pdf_unweighted = lambda x: kde_unweighted(normalize_samples(x, self._param_bounds).T) / pdf_scale
+        # We save both the detection-weighted and underlying KDEs, as we'll need both
+        kde = Bounded_Nd_kde(samples.T, weights=combined_weights, bw_method=_kde_bandwidth, bounds=self.param_bounds)
+        if cosmo_weights is not None:
+            kde_underlying = Bounded_Nd_kde(samples.T, weights=cosmo_weights, bw_method=_kde_bandwidth, bounds=self.param_bounds)
         else:
-            self._pdf =  lambda x: kde(x.T)
-            self._pdf_unweighted =  lambda x: kde_unweighted(x.T)
+            kde_underlying = Bounded_Nd_kde(samples.T, weights=None, bw_method=_kde_bandwidth, bounds=self.param_bounds)
+        self.kde = kde
+        self.kde_underlying = kde_underlying
 
-        # keep bounds of the samples
-        self._bin_edges = []
-        self._bin_edges_unweighted = []
-        for dmin, dmax in zip(samples.min(axis=0), samples.max(axis=0)):
-            self._bin_edges.append(np.linspace(dmin, dmax, 100))
-        for dmin, dmax in zip(unweighted_samples.min(axis=0), unweighted_samples.max(axis=0)):
-            self._bin_edges_unweighted.append(np.linspace(dmin, dmax, 100))
-        self._bin_edges = np.asarray(self._bin_edges)
-        self._bin_edges_unweighted = np.asarray(self._bin_edges_unweighted)
+        if self.normalize==True:
+            self.pdf = lambda x: kde(normalize_samples(x, self.param_bounds).T) / pdf_scale
+            self.pdf_underlying = lambda x: kde_underlying(normalize_samples(x, self.param_bounds).T) / pdf_scale
+        else:
+            self.pdf =  lambda x: kde(x.T)
+            self.pdf_underlying =  lambda x: kde_underlying(x.T)
 
-        self._cached_values = None
+        self.cached_values = None
 
     def sample(self, N=1, weighted_kde=False):
         """
         Samples KDE and denormalizes sampled data
         """
-        # FIXME this needs to be expanded to draw from the unweighted KDE and calculate SNRs
-        kde = self._kde if weighted_kde==True else self._kde_unweighted
-        if self._normalize==True:
-            samps = denormalize_samples(kde.bounded_resample(N).T, self._param_bounds)
+        # FIXME this needs to be expanded to draw from the underlying KDE and calculate SNRs
+        kde = self.kde if weighted_kde==True else self.kde_underlying
+        if self.normalize==True:
+            samps = denormalize_samples(kde.bounded_resample(N).T, self.param_bounds)
         else:
             samps = kde.bounded_resample(N).T
         return samps
@@ -164,17 +167,7 @@ class KDEModel(Model):
         """
         Stores the relative fraction of samples that are drawn from this KDE model
         """
-        self._rel_frac = beta
-
-    def bin_centers(self):
-        """
-        Return the center points of the bins. Note that this returns the \
-        Cartesian product of the bin_edges, which are the linear "axes" of \
-        the parameter dimensions. This allows for N-D plotting without \
-        holding N^{param} sets of points to evaluate.
-        """
-        edges = [(be[1:] + be[:-1]) / 2 for be in self._bin_edges]
-        return np.asarray(list(itertools.product(*edges)))
+        self.rel_frac = beta
 
     def freeze(self, data, data_pdf=None):
         """
@@ -183,8 +176,8 @@ class KDEModel(Model):
         p_hyperparam(data) is evaluated many times, but only needs to be once \
         because it's a fixed value, dependent only on the observations
         """
-        self._cached_values = None
-        self._cached_values = self(data, data_pdf)
+        self.cached_values = None
+        self.cached_values = self(data, data_pdf)
 
     def __call__(self, data, data_pdf=None):
         """
@@ -193,22 +186,16 @@ class KDEModel(Model):
         posterior probability. Otherwise, the posterior values should be \
         provided as the same dimensions of the samples.
         """
-        if self._cached_values is not None:
-            return self._cached_values
+        if self.cached_values is not None:
+            return self.cached_values
 
         prob = np.ones(data.shape[0]) * 1e-20
         for idx, obs in enumerate(np.atleast_3d(data)):
             # Evaluate the KDE at the samples
             d_pdf = data_pdf[idx] if data_pdf is not None else 1
             # FIXME: does it matter that we average rather than sum?
-            prob[idx] += np.sum(self._pdf(obs) / d_pdf) / len(obs)
+            prob[idx] += np.sum(self.pdf(obs) / d_pdf) / len(obs)
         return prob
-
-    def extent(self):
-        bc = np.squeeze(self.bin_centers())
-        bmin = bc.min(axis=0)
-        bmax = bc.max(axis=0)
-        return np.asarray([bmin, bmax])
 
     def marginalize(self, params):
         """
@@ -219,26 +206,26 @@ class KDEModel(Model):
             label += '_'+p
         label += '_marginal'
 
-        return KDEModel(label, self._samples[params], self._weights, self._detectable_convfac, self._normalize)
+        return KDEModel(label, self.samples[params], self.cosmo_weights, self.det_weights, self.detectable_convfac, self.normalize)
 
     def generate_observations(self, Nobs, detector='design_network', psd_path=None, from_detectable=False):
         """
-        Generates samples from KDE model. This will generated Nobs samples, storing the attribute 'self._observations' with dimensions [Nobs x Nparam]. 
+        Generates samples from KDE model. This will generated Nobs samples, storing the attribute 'self.observations' with dimensions [Nobs x Nparam]. 
         """
         # FIXME I'll need to change this up to work for single parameters...
 
         if from_detectable==True:
             observations = self.sample(Nobs, weighted_kde=True)
-            self._observations = observations
+            self.observations = observations
             return observations
 
-        params = list(self._samples.keys())
+        params = list(self.samples.keys())
 
         if detector not in _PSD_defaults.keys():
             # fall back on drawing from detection-weighted KDE
             warnings.warn('The detector ({}) you specified is not in PSD defaults, falling back to generating observations using the detection-weighted KDEs and measurement uncertainties tuned to GW events'.format(detector))
-            self._detector = None
-            self._snr_thresh = None
+            self.detector = None
+            self.snr_thresh = None
             snrs = np.nan * np.ones(Nobs)
             observations = self.sample(Nobs, weighted_kde=True)
         elif not (set(['mchirp','q','z']).issubset(set(params)) \
@@ -246,15 +233,15 @@ class KDEModel(Model):
                 | set(['mtot','eta','z']).issubset(set(params))):
             # fall back on drawing from detection-weighted KDE
             warnings.warn('The parameters you specified for inference ({}) do not have enough information to draw detectable sources from the underlying population, falling back to generating observations using the detection-weighted KDEs and measurement uncertainties tuned to GW events'.format(','.join(params)))
-            self._detector = None
-            self._snr_thresh = None
+            self.detector = None
+            self.snr_thresh = None
             snrs = np.nan * np.ones(Nobs)
             observations = self.sample(Nobs, weighted_kde=True)
 
         else:
             # draw observations from underlying distributions and calculate SNRs
-            self._detector = detector
-            self._snr_thresh = _PSD_defaults['snr_network'] if 'network' in detector else _PSD_defaults['snr_single']
+            self.detector = detector
+            self.snr_thresh = _PSD_defaults['snr_network'] if 'network' in detector else _PSD_defaults['snr_single']
 
             # first check if spin info is provided
             if not (set(['mchirp','q','z','chieff']).issubset(set(params)) \
@@ -266,7 +253,7 @@ class KDEModel(Model):
                 spin_info = True
             
             print('   generating observations from underlying distribution for {}'.format(self.label))
-            observations = np.zeros((Nobs, self._samples.shape[-1]))
+            observations = np.zeros((Nobs, self.samples.shape[-1]))
             snrs = np.zeros(Nobs)
             Thetas = np.zeros(Nobs)
             for n in tqdm(np.arange(Nobs)):
@@ -290,16 +277,16 @@ class KDEModel(Model):
 
                     # see whether the system is detected, this will either be 1 or 0 for a single Ntrial
                     system = [m1,m2,z,s1,s2]
-                    pdet, snr, Theta = detection_probability(system, ifos=_PSD_defaults[self._detector], rho_thresh=self._snr_thresh, Ntrials=1, return_snr=True, psd_path=psd_path)
+                    pdet, snr, Theta = detection_probability(system, ifos=_PSD_defaults[self.detector], rho_thresh=self.snr_thresh, Ntrials=1, return_snr=True, psd_path=psd_path)
                     if pdet>0:
                         observations[n,:] = obs
                         snrs[n] = np.float(snr)
                         Thetas[n] = np.float(Theta)
                         detected=True
 
-        self._observations = observations
-        self._snrs = snrs
-        self._Thetas = Thetas
+        self.observations = observations
+        self.snrs = snrs
+        self.Thetas = Thetas
         return observations
 
 
@@ -308,29 +295,29 @@ class KDEModel(Model):
         Mocks up measurement uncertainty from observations using specified method
         """
 
-        params = list(self._samples.keys())
+        params = list(self.samples.keys())
 
         # If systems were not able to be drawn from the underlying distribution and method='snr' was specified, fall back to using 'gwevents'
-        if method=='snr' and any(np.isnan(self._snrs)):
+        if method=='snr' and any(np.isnan(self.snrs)):
             warnings.warn("You specified SNR-dependent measurement uncertainties, but your method for generating observations does not allow for SNR calculations. Falling back to using the method 'gwevents'.")
             method = 'gwevents'
 
         if method=='delta':
             # assume a delta function measurement
-            obsdata = np.expand_dims(self._observations, 1)
+            obsdata = np.expand_dims(self.observations, 1)
             return obsdata
 
         # set up obsdata as [obs, samps, params]
-        obsdata = np.zeros((self._observations.shape[0], Nsamps, self._observations.shape[-1]))
+        obsdata = np.zeros((self.observations.shape[0], Nsamps, self.observations.shape[-1]))
         
         # for 'gwevents', assume snr-independent measurement uncertainty based on the typical values for events in the catalog
         if method == "gwevents":
-            for idx, obs in enumerate(self._observations):
-                for pidx in np.arange(self._observations.shape[-1]):
+            for idx, obs in enumerate(self.observations):
+                for pidx in np.arange(self.observations.shape[-1]):
                     mu = obs[pidx]
-                    sigma = self._posterior_sigmas[pidx]
-                    low_lim = self._param_bounds[pidx][0]
-                    high_lim = self._param_bounds[pidx][1]
+                    sigma = self.posterior_sigmas[pidx]
+                    low_lim = self.param_bounds[pidx][0]
+                    high_lim = self.param_bounds[pidx][1]
 
                     # construnct gaussian and drawn samples
                     dist = norm(loc=mu, scale=sigma)
@@ -354,7 +341,7 @@ class KDEModel(Model):
         # for 'snr', use SNR-dependent measurement uncertainty following procedures from Fishbach et al. 2018
         if method == "snr":
 
-            for idx, (obs,snr,Theta) in enumerate(zip(self._observations, self._snrs, self._Thetas)):
+            for idx, (obs,snr,Theta) in enumerate(zip(self.observations, self.snrs, self.Thetas)):
                 # convert to mchirp, q
                 if set(['mchirp','q']).issubset(set(params)):
                     mc_true = obs[params.index('mchirp')]
@@ -375,7 +362,7 @@ class KDEModel(Model):
                 snr_obs = snr + np.random.normal(loc=0, scale=1)
 
                 # get the snr-weighted sigma for the detector-frame chirp mass, and draw samples
-                mc_sigma = _snrscale_sigmas['mchirp']*self._snr_thresh / snr_obs
+                mc_sigma = _snrscale_sigmas['mchirp']*self.snr_thresh / snr_obs
                 if observation_noise==True:
                     mcdet_obs = float(10**(np.log10(mcdet_true) + norm.rvs(loc=0, scale=mc_sigma, size=1)))
                 else:
@@ -383,7 +370,7 @@ class KDEModel(Model):
                 mcdet_samps = 10**(np.log10(mcdet_obs) + norm.rvs(loc=0, scale=mc_sigma, size=Nsamps))
 
                 # get the snr-weighted sigma for eta, and draw samples
-                eta_sigma = _snrscale_sigmas['eta']*self._snr_thresh / snr_obs
+                eta_sigma = _snrscale_sigmas['eta']*self.snr_thresh / snr_obs
                 if observation_noise==True:
                     eta_obs = float(truncnorm.rvs(a=(0-eta_true)/eta_sigma, b=(0.25-eta_true)/eta_sigma, loc=eta_true, scale=eta_sigma, size=1))
                 else:
@@ -392,7 +379,7 @@ class KDEModel(Model):
 
                 # get samples for projection factor (use the true value as the observed value)
                 snr_opt = snr/Theta
-                Theta_sigma = 0.3 / (1.0 + snr_opt/self._snr_thresh)
+                Theta_sigma = 0.3 / (1.0 + snr_opt/self.snr_thresh)
                 Theta_samps = truncnorm.rvs(a=(0-Theta)/Theta_sigma, b=(1-Theta)/Theta_sigma, loc=Theta, scale=Theta_sigma, size=Nsamps)
 
                 # get luminosity distance and redshift observed samples
@@ -417,7 +404,7 @@ class KDEModel(Model):
                         obsdata[idx, :, pidx] = eta_samps
                     elif param=='chieff':
                         chieff_true = obs[params.index('chieff')]
-                        chieff_sigma = _snrscale_sigmas['chieff']*self._snr_thresh / snr_obs
+                        chieff_sigma = _snrscale_sigmas['chieff']*self.snr_thresh / snr_obs
                         if observation_noise==True:
                             chieff_obs = float(truncnorm.rvs(a=(-1-chieff_true)/chieff_sigma, b=(1-chieff_true)/chieff_sigma, loc=chieff_true, scale=chieff_sigma, size=1))
                         else:

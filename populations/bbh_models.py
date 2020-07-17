@@ -62,7 +62,7 @@ def get_models(file_path, specific_channels, params, spin_distr=None, sensitivit
 
     # --- Read in the models, parse the inference parameters
     if verbose:
-        print("\nReading models and applying transformations...\n")
+        print("\nReading models, applying transformations, and initializing KDEs...\n")
 
     # all models should be saved in 'file_path' in a hierarchical structure, with the channel being the top group
     f = h5py.File(file_path, "r")
@@ -83,44 +83,23 @@ def get_models(file_path, specific_channels, params, spin_distr=None, sensitivit
                     deepest_models_cut.append(mdl)
         deepest_models = deepest_models_cut
 
-    # save all models as pandas dataframes in dict structure
-    models = {}
+    # Save all KDE models as pandas dataframes in dict structure
+    kde_models = {}
     for smdl in tqdm(deepest_models):
         smdl_list = smdl.split('/')
-        current_level = models
+        current_level = kde_models
         for part in smdl_list:
             if part not in current_level:
                 if part == smdl_list[-1]:
-                    # if we are on the last level, save dataframe
+                    # if we are on the last level, read in data and store kdes
                     df = pd.read_hdf(file_path, key=smdl)
-                    df = get_params(df, params)
-                    current_level[part] = df
+                    label = '/'.join(smdl_list)
+                    mdl = KDEModel.from_samples(label, df, params, sensitivity=sensitivity, normalize=normalize)
+                    current_level[part] = mdl
                 else:
                     current_level[part] = {}
 
             current_level = current_level[part]
 
-    # --- Now, construct KDE models
-    if verbose:
-        print("\nConstructing KDEs for populations...\n")
-    kde_models = {}
-    for smdl in tqdm(deepest_models):
-        smdl_list = smdl.split('/')
-        current_level = models
-        current_level_kde = kde_models
-        for part in smdl_list:
-            if part not in current_level_kde:
-                if part == smdl_list[-1]:
-                    # if we are on the last level, save kdes
-                    df = current_level[part]
-                    label = '/'.join(smdl_list)
-                    mdl = KDEModel.from_samples(label, df, params, sensitivity=sensitivity, normalize=normalize)
-                    current_level_kde[part] = mdl
-                else:
-                    current_level_kde[part] = {}
-
-            current_level = current_level[part]
-            current_level_kde = current_level_kde[part]
-
-    return deepest_models, models, kde_models
+    return deepest_models, kde_models
 

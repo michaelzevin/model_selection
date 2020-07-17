@@ -68,7 +68,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
 
             # if this kde is in model0, allocate array for samples
             if model0 and (kde.label == model0[channel].label):
-                channel_model0_samples = np.zeros(shape=(int(kde._rel_frac*_Nsamps),Nparams))
+                channel_model0_samples = np.zeros(shape=(int(kde.rel_frac*_Nsamps),Nparams))
 
             # loop over all parameters...
             for pidx, param in enumerate(params):
@@ -87,11 +87,11 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
 
                 # if this model is in model0, sample the marginalized KDE
                 if model0 and (kde.label == model0[channel].label):
-                    channel_model0_samples[:,pidx] = marg_kde.sample(int(kde._rel_frac*_Nsamps), weighted_kde=True).flatten()
+                    channel_model0_samples[:,pidx] = marg_kde.sample(int(kde.rel_frac*_Nsamps), weighted_kde=True).flatten()
 
                 # legend label
                 if model0:
-                    label = channel+r" ($\beta$={0:0.1f})".format(kde._rel_frac)
+                    label = channel+r" ($\beta$={0:0.1f})".format(kde.rel_frac)
                 else:
                     label = channel
 
@@ -240,9 +240,9 @@ def plot_samples(samples, submodels_dict, model_names, channels, model0, name=No
 
         # plot the injected value
         if model0:
-            ax_chain.axhline(model0[channel]._rel_frac, color='k', \
+            ax_chain.axhline(model0[channel].rel_frac, color='k', \
                     linestyle='--', alpha=0.7)
-            ax_marg.axhline(model0[channel]._rel_frac, color='k', \
+            ax_marg.axhline(model0[channel].rel_frac, color='k', \
                     linestyle='--', alpha=0.7)
 
         # tick labels
