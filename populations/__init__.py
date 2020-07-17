@@ -155,7 +155,6 @@ class KDEModel(Model):
         """
         Samples KDE and denormalizes sampled data
         """
-        # FIXME this needs to be expanded to draw from the underlying KDE and calculate SNRs
         kde = self.kde if weighted_kde==True else self.kde_underlying
         if self.normalize==True:
             samps = denormalize_samples(kde.bounded_resample(N).T, self.param_bounds)
@@ -208,81 +207,75 @@ class KDEModel(Model):
 
         return KDEModel(label, self.samples[params], self.cosmo_weights, self.det_weights, self.detectable_convfac, self.normalize)
 
-    def generate_observations(self, Nobs, detector='design_network', psd_path=None, from_detectable=False):
+    def generate_observations(self, Nobs, uncertainty, detector='design_network', psd_path=None):
         """
         Generates samples from KDE model. This will generated Nobs samples, storing the attribute 'self.observations' with dimensions [Nobs x Nparam]. 
         """
         # FIXME I'll need to change this up to work for single parameters...
 
-        if from_detectable==True:
+        # if not using SNR-dependent measurement uncertainty, just draw from the detection-weighted distribution
+        # much quicker, and works with any combination of parameters
+        if uncertainty!="snr":
             observations = self.sample(Nobs, weighted_kde=True)
             self.observations = observations
             return observations
 
+        # if using SNR-dependent measurement, first check that the proper inputs are provided
+        # and that the correct set of parameters are supplied
         params = list(self.samples.keys())
-
         if detector not in _PSD_defaults.keys():
-            # fall back on drawing from detection-weighted KDE
-            warnings.warn('The detector ({}) you specified is not in PSD defaults, falling back to generating observations using the detection-weighted KDEs and measurement uncertainties tuned to GW events'.format(detector))
-            self.detector = None
-            self.snr_thresh = None
-            snrs = np.nan * np.ones(Nobs)
-            observations = self.sample(Nobs, weighted_kde=True)
-        elif not (set(['mchirp','q','z']).issubset(set(params)) \
+            raise NameError('The detector ({}) you specified is not in PSD defaults, and therefore you cannot use SNR-dependent measurement uncertainty'.format(detector))
+        if not (set(['mchirp','q','z']).issubset(set(params)) \
                 | set(['mtot','q','z']).issubset(set(params)) \
                 | set(['mtot','eta','z']).issubset(set(params))):
             # fall back on drawing from detection-weighted KDE
-            warnings.warn('The parameters you specified for inference ({}) do not have enough information to draw detectable sources from the underlying population, falling back to generating observations using the detection-weighted KDEs and measurement uncertainties tuned to GW events'.format(','.join(params)))
-            self.detector = None
-            self.snr_thresh = None
-            snrs = np.nan * np.ones(Nobs)
-            observations = self.sample(Nobs, weighted_kde=True)
+            raise KeyError('The parameters you specified for inference ({}) do not have enough information to draw detectable sources from the underlying population, and therefore you cannot use SNR-dependent measurement uncertainty'.format(','.join(params)))
 
+
+        ### Draw observations from underlying distributions and calculate SNRs
+        self.detector = detector
+        self.snr_thresh = _PSD_defaults['snr_network'] if 'network' in detector else _PSD_defaults['snr_single']
+
+        # first check if spin info is provided
+        if not (set(['mchirp','q','z','chieff']).issubset(set(params)) \
+          | set(['mtot','q','z','chieff']).issubset(set(params)) \
+          | set(['mtot','eta','z','chieff']).issubset(set(params))):
+            spin_info = False
+            warnings.warn('The parameters you specified for inference ({}) do not have spin information, assuming non-spinning BHs in the SNR calculations.'.format(','.join(params)))
         else:
-            # draw observations from underlying distributions and calculate SNRs
-            self.detector = detector
-            self.snr_thresh = _PSD_defaults['snr_network'] if 'network' in detector else _PSD_defaults['snr_single']
+            spin_info = True
+        
+        print('   generating observations from underlying distribution for {}'.format(self.label))
+        observations = np.zeros((Nobs, self.samples.shape[-1]))
+        snrs = np.zeros(Nobs)
+        Thetas = np.zeros(Nobs)
+        for n in tqdm(np.arange(Nobs)):
+            detected=False
+            while detected==False:
+                obs = self.sample(1, weighted_kde=False)[0]
+                # convert to component masses
+                if set(['mchirp','q']).issubset(set(params)):
+                    m1, m2 = mchirpq_to_m1m2(obs[params.index('mchirp')],obs[params.index('q')])
+                elif set(['mtot','q']).issubset(set(params)):
+                    m1, m2 = mtotq_to_m1m2(obs[params.index('mtot')],obs[params.index('q')])
+                elif set(['mtot','eta']).issubset(set(params)):
+                    m1, m2 = mtoteta_to_m1m2(obs[params.index('mtot')],obs[params.index('eta')])
+                # convert to component spins
+                if spin_info == True:
+                    s1, s2 = chieff_to_s1s2(obs[params.index('chieff')])
+                else:
+                    s1, s2 = (0,0,0), (0,0,0)
+                # get redshift
+                z = obs[params.index('z')]
 
-            # first check if spin info is provided
-            if not (set(['mchirp','q','z','chieff']).issubset(set(params)) \
-              | set(['mtot','q','z','chieff']).issubset(set(params)) \
-              | set(['mtot','eta','z','chieff']).issubset(set(params))):
-                spin_info = False
-                warnings.warn('The parameters you specified for inference ({}) do not have spin information, assuming non-spinning BHs in the SNR calculations.'.format(','.join(params)))
-            else:
-                spin_info = True
-            
-            print('   generating observations from underlying distribution for {}'.format(self.label))
-            observations = np.zeros((Nobs, self.samples.shape[-1]))
-            snrs = np.zeros(Nobs)
-            Thetas = np.zeros(Nobs)
-            for n in tqdm(np.arange(Nobs)):
-                detected=False
-                while detected==False:
-                    obs = self.sample(1, weighted_kde=False)[0]
-                    # convert to component masses
-                    if set(['mchirp','q']).issubset(set(params)):
-                        m1, m2 = mchirpq_to_m1m2(obs[params.index('mchirp')],obs[params.index('q')])
-                    elif set(['mtot','q']).issubset(set(params)):
-                        m1, m2 = mtotq_to_m1m2(obs[params.index('mtot')],obs[params.index('q')])
-                    elif set(['mtot','eta']).issubset(set(params)):
-                        m1, m2 = mtoteta_to_m1m2(obs[params.index('mtot')],obs[params.index('eta')])
-                    # convert to component spins
-                    if spin_info == True:
-                        s1, s2 = chieff_to_s1s2(obs[params.index('chieff')])
-                    else:
-                        s1, s2 = (0,0,0), (0,0,0)
-                    # get redshift
-                    z = obs[params.index('z')]
-
-                    # see whether the system is detected, this will either be 1 or 0 for a single Ntrial
-                    system = [m1,m2,z,s1,s2]
-                    pdet, snr, Theta = detection_probability(system, ifos=_PSD_defaults[self.detector], rho_thresh=self.snr_thresh, Ntrials=1, return_snr=True, psd_path=psd_path)
-                    if pdet>0:
-                        observations[n,:] = obs
-                        snrs[n] = np.float(snr)
-                        Thetas[n] = np.float(Theta)
-                        detected=True
+                # see whether the system is detected, this will either be 1 or 0 for a single Ntrial
+                system = [m1,m2,z,s1,s2]
+                pdet, snr, Theta = detection_probability(system, ifos=_PSD_defaults[self.detector], rho_thresh=self.snr_thresh, Ntrials=1, return_snr=True, psd_path=psd_path)
+                if pdet>0:
+                    observations[n,:] = obs
+                    snrs[n] = np.float(snr)
+                    Thetas[n] = np.float(Theta)
+                    detected=True
 
         self.observations = observations
         self.snrs = snrs
@@ -296,11 +289,6 @@ class KDEModel(Model):
         """
 
         params = list(self.samples.keys())
-
-        # If systems were not able to be drawn from the underlying distribution and method='snr' was specified, fall back to using 'gwevents'
-        if method=='snr' and any(np.isnan(self.snrs)):
-            warnings.warn("You specified SNR-dependent measurement uncertainties, but your method for generating observations does not allow for SNR calculations. Falling back to using the method 'gwevents'.")
-            method = 'gwevents'
 
         if method=='delta':
             # assume a delta function measurement

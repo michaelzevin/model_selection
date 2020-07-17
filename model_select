@@ -35,7 +35,6 @@ argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations to
 argp.add_argument("-N", "--Nsamps", type=int, default=100, help="Number of samples to be drawn from the posterior distributions and used to construct the KDE models. Default=100.")
 argp.add_argument("--sensitivity", type=str, help="Name of column in dataframe of detection probabilities, which should have the same name as the network sensitivity and configuration you wish to use. This is used to construct a 'detection-weighted' kde. These weights have the same name as the network sensitivity from the LVC Observing Scenarios, and have '_network' appended if using a 3-detector configuration. Default=None.")
 argp.add_argument("--uncertainty", type=str, help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posteriors'), or from a mock gaussian with the mean and sigma of observations ('gaussian'). For mock observations, you can choose to smear according to the average spread in parameters from current GW observations ('gwevents'), or use a gaussian with an SNR-dependent sigma ('snr'). Default=None.")
-argp.add_argument("--rate-prior", action="store_true", help="Uses predicted rates from population models as priors. WARNING: still in beta. Default=False.")
 argp.add_argument("--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the spin magnitude is not specified. Default is None.")
 argp.add_argument("--make-plots", action="store_true", help="Determines whether to make accompanying plots. Default is False.")
 argp.add_argument("-V", "--verbose", action="store_true", help="Determines whether to be verbose in the code. Default is False.")
@@ -209,14 +208,14 @@ else:
             warnings.warn('Number of observations is not divisble by branching fractions, this may result in drawing a number of samples slighty different than what was specified!')
         Nobs_per_channel = int(np.round(args.Nobs * model0[channel].rel_frac))
         if idx==0:
-            observations = model0[channel].generate_observations(Nobs_per_channel, \
-                detector=args.sensitivity, psd_path=args.psd_path, from_detectable=False)
+            observations = model0[channel].generate_observations(Nobs_per_channel, args.uncertainty,\
+                detector=args.sensitivity, psd_path=args.psd_path)
             obsdata = model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)
         else:
             observations = np.concatenate((observations, \
-                model0[channel].generate_observations(Nobs_per_channel, \
-                detector=args.sensitivity, psd_path=args.psd_path, from_detectable=False)))
+                model0[channel].generate_observations(Nobs_per_channel, args.uncertainty, \
+                detector=args.sensitivity, psd_path=args.psd_path)))
             obsdata = np.concatenate((obsdata, \
                 model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)))
@@ -284,40 +283,6 @@ submodels_dict = sampler.submodels_dict
 for hyper_idx in list(submodels_dict.keys()):
     samples[:,:,hyper_idx] = np.floor(samples[:,:,hyper_idx]).astype(int)
 
-# FIXME: need to get the conversion factors working
-"""# get the conversion factors for a given submodel to normalize to unity so we can convert betas from detectable populations to underlying populations
-print('Converting from detectable branching fractions to underlying brancing fractions...\n')
-samples_detectable = samples.copy()
-smdls = sorted(list(set([x.split('/',1)[1] for x in model_names])))
-Nreweight=0
-for smdl in smdls:
-    convfac_per_smdl = []
-    # get conversion factors
-    for channel in channels:
-        smdl_list = [channel] + smdl.split('/')
-        convfac_per_smdl.append(getFromDict(kde_models, smdl_list).detectable_convfac)
-    # normalize conversion factors and store in KDE objects
-    #convfac_normed /= np.sum(convfac_normed)
-    #for cidx, channel in enumerate(channels):
-    #    smdl_list = [channel] + smdl.split('/')
-    #    getFromDict(kde_models, smdl_list).detectable_convfac_normed = convfac_normed[cidx]
-    # change the beta values in the posterior samples
-    smdl_list = smdl.split('/')
-    smdl_param_idxs = []
-    for hyper_idx in np.arange(len(smdl_list)):
-        smdl_param = submodels_dict[hyper_idx]
-        smdl_param_idxs.append(list(smdl_param.values()).index(smdl_list[hyper_idx]))
-    for i in np.arange(samples.shape[0]):
-        for j in np.arange(samples.shape[1]):
-            if samples[i,j,:len(smdl_param_idxs)] == smdl_param_idxs:
-                Nreweight += 1
-                samples[i,j,len(smdl_param_idxs):] /= convfac_per_smdl
-                samples[i,j,len(smdl_param_idxs):] /= np.sum(samples[i,j,len(smdl_param_idxs):])
-
-print(Nreweight)
-print(samples.shape[0]*samples.shape[1])
-samples = samples_detectable
-"""
 
 # Plot samples and histograms of betas per model
 if make_plots==True:
