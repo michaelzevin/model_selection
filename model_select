@@ -250,8 +250,12 @@ else:
 # Plot the KDEs and observations
 if make_plots==True:
     print("Plotting marginalized KDE models...")
+    if len(args.model0.split('/'))>1:
+        fixed_vals = [args.model0.split('/')[-1]]
+    else:
+        fixed_vals = ['alpha10']
     msplot.plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, \
-           model0, name=args.name, fixed_vals=['alpha10'], plot_obs=True, plot_obs_samples=False)
+           model0, name=args.name, fixed_vals=fixed_vals, plot_obs=True, plot_obs_samples=False)
     print("")
 
 

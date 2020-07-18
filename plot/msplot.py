@@ -37,10 +37,9 @@ def setInDict(dataDict, mapList, value):
 def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, model0, name=None, fixed_vals=[], plot_obs=False, plot_obs_samples=False):
     """
     Plots all the KDEs for each channel in each model, as well as the *true* model described by the input branching fraction.
-    If more than one population parameter is being considered, specify in list 'fixed_vals' (e.g., ['alpha1']).
+    If more than one population parameter is being considered, specify in list 'fixed_vals' (e.g., ['alpha10']).
     """
     # filter to only get models for one population parameter
-    models_to_plot = model_names.copy()
     models_to_plot = []
     if fixed_vals:
         for model in model_names:
