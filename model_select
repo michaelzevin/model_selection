@@ -37,10 +37,10 @@ argp.add_argument("--sensitivity", type=str, help="Name of column in dataframe o
 argp.add_argument("--uncertainty", type=str, help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posteriors'), or from a mock gaussian with the mean and sigma of observations ('gaussian'). For mock observations, you can choose to smear according to the average spread in parameters from current GW observations ('gwevents'), or use a gaussian with an SNR-dependent sigma ('snr'). Default=None.")
 argp.add_argument("--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the spin magnitude is not specified. Default is None.")
 argp.add_argument("--detectable-beta", action="store_true", help="If True, will assume the supplied branching fractions represent the branching fractions of *detected* events. If False, will assume the supplied branching fractions represent the branching fractions of *underlying* events. Default is False.")
+argp.add_argument("--Nobs-probabilistic", action="store_true", help="If True, will determine the number of observations to draw from each channel in a 'probabilistic' sense based on the branching fractions using random number generator. If False, do the best rounding it can based on the input branching fractions. Default is False.")
 argp.add_argument("--make-plots", action="store_true", help="Determines whether to make accompanying plots. Default is False.")
 argp.add_argument("-V", "--verbose", action="store_true", help="Determines whether to be verbose in the code. Default is False.")
 argp.add_argument("-S", "--save-samples", action="store_true", help="Save all the samples rather than just the summary statistics. Default is False.")
-argp.add_argument("-E", "--evidence", action="store_true", help="Determines whether or not to calculate the evidence for each submodel using thermodynamic integration. WARNING: still in beta. Default is False.")
 argp.add_argument("-rs", "--random-seed", type=int, help="Use this to set the random seed. Default=None.")
 argp.add_argument("--name", type=str, help="Use this as the stem for all file output. Default=None.")
 args = argp.parse_args()
@@ -48,6 +48,8 @@ args = argp.parse_args()
 # --- Set random seed
 if args.random_seed:
     np.random.seed(args.random_seed)
+else:
+    np.random.seed()
 
 # --- Save certain boolean arguments
 verbose=args.verbose
@@ -217,12 +219,20 @@ if gwobs:
 else:
     if verbose:
         print("Drawing {0:d} observations from model0, using the '{1:s}' method for measurement uncertainty...\n".format(int(args.Nobs), args.uncertainty))
+    rand_vars = np.random.random(size=args.Nobs)
+    randlow_hold = 0
     for idx, channel in enumerate(model0):
-        # first check that the branching fractions * Nobs are integers
-        # FIXME: should I do this more probabilistically?
-        if not (args.Nobs*model0[channel].rel_frac).is_integer():
-            warnings.warn('Number of observations is not divisble by branching fractions, this may result in drawing a number of samples slighty different than what was specified!')
-        Nobs_per_channel = int(np.round(args.Nobs * model0[channel].rel_frac))
+        if args.Nobs_probabilistic==True:
+            Nobs_per_channel = len(np.where((rand_vars>=randlow_hold) & \
+                    (rand_vars<(randlow_hold+model0[channel].rel_frac)))[0])
+            randlow_hold += model0[channel].rel_frac
+        elif args.Nobs_probabilistic==False:
+            # first check that the branching fractions * Nobs are integers
+            if not (args.Nobs*model0[channel].rel_frac).is_integer():
+                warnings.warn('Number of observations is not divisble by branching fractions, this may result in drawing a number of samples slighty different than what was specified!')
+            Nobs_per_channel = int(np.round(args.Nobs * model0[channel].rel_frac))
+        # add attribute for number of observations drawn
+        model0[channel].Nobs_from_beta(Nobs_per_channel)
         if idx==0:
             observations = model0[channel].generate_observations(Nobs_per_channel, args.uncertainty,\
                 detector=args.sensitivity, psd_path=args.psd_path)

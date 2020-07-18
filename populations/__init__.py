@@ -24,7 +24,7 @@ cosmo = cosmology.Planck15
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
-_maxsamps = int(1e5)
+_maxsamps = int(1e4)
 _kde_bandwidth = 0.01
 
 """
@@ -174,6 +174,12 @@ class KDEModel(Model):
         Stores the branching fraction of the underlying population
         """
         self.underlying_frac = beta
+
+    def Nobs_from_beta(self, Nobs):
+        """
+        Stores the branching fraction of the underlying population
+        """
+        self.Nobs_from_beta = Nobs
 
     def freeze(self, data, data_pdf=None):
         """
