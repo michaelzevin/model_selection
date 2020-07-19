@@ -46,7 +46,7 @@ def get_params(df, params):
     return df
 
 
-def get_models(file_path, specific_channels, params, spin_distr=None, sensitivity=None, normalize=False, verbose=False, **kwargs):
+def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, normalize=False, verbose=False, **kwargs):
     """
     Call this to get all the models and submodels, as well
     as KDEs of these models, packed inside of dictionaries labelled in the
@@ -75,9 +75,9 @@ def get_models(file_path, specific_channels, params, spin_distr=None, sensitivit
     f.close()
     deepest_models = sorted(list(set(deepest_models)))
     # if only using specific formation channels, remove other models
-    if specific_channels:
+    if channels:
         deepest_models_cut = []
-        for chnl in specific_channels:
+        for chnl in channels:
             for mdl in deepest_models:
                 if chnl+'/' in mdl:
                     deepest_models_cut.append(mdl)
