@@ -262,14 +262,18 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, 
         psd_interp = get_psd(psd, ifo, f_low=f_low, f_high=f_high, psd_path=psd_path)
         psds[ifo] = psd_interp
 
-    # calculate optimal SNR
-    hpf_opt, hxf_opt, freqs = get_waveform(m1, m2, z, s1, s2, vary_params=False, f_low=f_low, f_high=f_high, df=df)
-    rho_opts={}
-    for ifo in ifos.keys():
-        rho_opts[ifo] = snr(hpf_opt, hxf_opt, freqs, psds[ifo], f_low=f_low, df=df)
+    # calculate optimal SNR (sometimes hits runtime error for some reason)
+    try:
+        hpf_opt, hxf_opt, freqs = get_waveform(m1, m2, z, s1, s2, vary_params=False, f_low=f_low, f_high=f_high, df=df)
+        rho_opts={}
+        for ifo in ifos.keys():
+            rho_opts[ifo] = snr(hpf_opt, hxf_opt, freqs, psds[ifo], f_low=f_low, df=df)
+
+        snr_opt = np.linalg.norm(list(rho_opts.values()))
+    except RuntimeError:
+        snr_opt = 0.0
 
     # if the combined SNR is less than the detection threshold, give weight of 0
-    snr_opt = np.linalg.norm(list(rho_opts.values()))
     if snr_opt < float(rho_thresh):
         weight = 0.0
         snrs = np.asarray(snr_opt)
