@@ -11,6 +11,7 @@ import h5py
 import warnings
 from functools import reduce
 import operator
+import multiprocessing
 from copy import deepcopy
 import pdb
 
@@ -65,7 +66,7 @@ def setInDict(dataDict, mapList, value):
 
 # --- Load in models/kdemodels into dict structure: models[model][channel]
 # `normalize` argument normalizes KDEs on unit cube
-model_names, kde_models, = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=False, verbose=verbose)
+model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=False, verbose=verbose)
 model_names.sort()
 params = args.params
 hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
@@ -272,7 +273,7 @@ if verbose:
 for model in model_names:
     if verbose:
         print("  {0:s}".format(model))
-    getFromDict(kde_models, model.split('/')).freeze(obsdata)
+    getFromDict(kde_models, model.split('/')).freeze(obsdata, multiproc=False)
 if verbose:
     print("Done freezing KDE evaluations of observations!\n")
 

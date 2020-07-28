@@ -4,6 +4,8 @@ import pickle
 import itertools
 import copy
 from tqdm import tqdm
+import multiprocessing
+from functools import partial
 import warnings
 import pdb
 
@@ -124,6 +126,9 @@ class KDEModel(Model):
             pdf_scale = scale_to_unity(self.param_bounds)
         else:
             samples = np.asarray(samples)
+            pdf_scale = None
+        self.pdf_scale = pdf_scale
+        
 
         # add a little bit of scatter to samples that have the exact same values, as this will freak out the KDE generator
         for idx, param in enumerate(samples.T):
@@ -181,7 +186,7 @@ class KDEModel(Model):
         """
         self.Nobs_from_beta = Nobs
 
-    def freeze(self, data, data_pdf=None):
+    def freeze(self, data, data_pdf=None, multiproc=True):
         """
         Caches the values of the model PDF at the data points provided. This \
         is useful to construct the hierarchal model likelihood since \
@@ -189,9 +194,35 @@ class KDEModel(Model):
         because it's a fixed value, dependent only on the observations
         """
         self.cached_values = None
-        self.cached_values = self(data, data_pdf)
+        dpdf = data_pdf if data_pdf is not None else np.ones(data.shape[0])
+        pdf_vals = []
 
-    def __call__(self, data, data_pdf=None):
+        if multiproc==True:
+
+            processes = []
+            manager = multiprocessing.Manager()
+            return_dict = manager.dict()
+            for idx, (d,dp) in tqdm(enumerate(zip(data,dpdf)), total=len(data)):
+                d = d.reshape((1, d.shape[0], d.shape[1]))
+                dp = [dp]
+                p = multiprocessing.Process(target=self, args=(d,dp,idx,return_dict,))
+                processes.append(p)
+                p.start()
+            for process in processes:
+                process.join()
+
+            for i in sorted(list(return_dict.keys())):
+                pdf_vals.append(return_dict[i])
+        else:
+            for idx, (d,dp) in tqdm(enumerate(zip(data,dpdf)), total=len(data)):
+                d = d.reshape((1, d.shape[0], d.shape[1]))
+                dp = [dp]
+                pdf_vals.append(self(d, dp))
+
+        pdf_vals = np.asarray(pdf_vals).flatten()
+        self.cached_values = pdf_vals
+
+    def __call__(self, data, data_pdf=None, proc_idx=None, return_dict=None):
         """
         The expectation is that "data" is a [Nobs x Nsample x Nparams] array. \
         If data_pdf is None, each observation is expected to have equal \
@@ -207,6 +238,9 @@ class KDEModel(Model):
             d_pdf = data_pdf[idx] if data_pdf is not None else 1
             # FIXME: does it matter that we average rather than sum?
             prob[idx] += np.sum(self.pdf(obs) / d_pdf) / len(obs)
+        # store value for multiprocessing
+        if return_dict is not None:
+            return_dict[proc_idx] = prob
         return prob
 
     def marginalize(self, params):
@@ -262,6 +296,7 @@ class KDEModel(Model):
         observations = np.zeros((Nobs, self.samples.shape[-1]))
         snrs = np.zeros(Nobs)
         Thetas = np.zeros(Nobs)
+        # FIXME make this multiprob compatible
         for n in tqdm(np.arange(Nobs)):
             detected=False
             while detected==False:
@@ -444,5 +479,4 @@ def scale_to_unity(bounds):
     ranges = [b[1]-b[0] for b in bounds]
     scale_factor = np.product(ranges)
     return scale_factor
-
 
