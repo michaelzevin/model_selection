@@ -304,7 +304,7 @@ class KDEModel(Model):
             snr_dict = manager.dict()
             Theta_dict = manager.dict()
 
-            for idx, n in tqdm(enumerate(np.arange(Nobs)), total=Nobs):
+            for idx in tqdm(np.arange(Nobs)):
                 p = multiprocessing.Process(target=self.draw_from_underlying_pop, args=(params, psd_path, spin_info, idx, obs_dict, snr_dict, Theta_dict,))
                 processes.append(p)
                 p.start()
@@ -330,7 +330,7 @@ class KDEModel(Model):
     def draw_from_underlying_pop(self, params, psd_path, spin_info, proc_idx=None, obs_dict=None, snr_dict=None, Theta_dict=None):
         # if multiprocessing, need to set random seeds differently
         if proc_idx is not None:
-            np.random.seed(proc_idx)
+            np.random.seed()
 
         detected=False
         while detected==False:
