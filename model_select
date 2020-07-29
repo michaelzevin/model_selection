@@ -52,6 +52,9 @@ if args.random_seed:
 else:
     np.random.seed()
 
+# --- Set this as true to do multithreading
+MOBOOL = True
+
 # --- Save certain boolean arguments
 verbose=args.verbose
 make_plots=args.make_plots
@@ -239,13 +242,13 @@ else:
         model0[channel].Nobs_from_beta(Nobs_per_channel)
         if idx==0:
             observations = model0[channel].generate_observations(Nobs_per_channel, args.uncertainty,\
-                detector=args.sensitivity, psd_path=args.psd_path)
+                detector=args.sensitivity, psd_path=args.psd_path, multiproc=MPBOOL)
             obsdata = model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)
         else:
             observations = np.concatenate((observations, \
                 model0[channel].generate_observations(Nobs_per_channel, args.uncertainty, \
-                detector=args.sensitivity, psd_path=args.psd_path)))
+                detector=args.sensitivity, psd_path=args.psd_path, multiproc=MPBOOL)))
             obsdata = np.concatenate((obsdata, \
                 model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)))
@@ -273,7 +276,7 @@ if verbose:
 for model in model_names:
     if verbose:
         print("  {0:s}".format(model))
-    getFromDict(kde_models, model.split('/')).freeze(obsdata, multiproc=False)
+    getFromDict(kde_models, model.split('/')).freeze(obsdata, multiproc=MPBOOL)
 if verbose:
     print("Done freezing KDE evaluations of observations!\n")
 

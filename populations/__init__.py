@@ -254,7 +254,7 @@ class KDEModel(Model):
 
         return KDEModel(label, self.samples[params], self.cosmo_weights, self.det_weights, self.detectable_convfac, self.normalize)
 
-    def generate_observations(self, Nobs, uncertainty, detector='design_network', psd_path=None):
+    def generate_observations(self, Nobs, uncertainty, detector='design_network', psd_path=None, multiproc=True):
         """
         Generates samples from KDE model. This will generated Nobs samples, storing the attribute 'self.observations' with dimensions [Nobs x Nparam]. 
         """
@@ -296,39 +296,73 @@ class KDEModel(Model):
         observations = np.zeros((Nobs, self.samples.shape[-1]))
         snrs = np.zeros(Nobs)
         Thetas = np.zeros(Nobs)
-        # FIXME make this multiprob compatible
-        for n in tqdm(np.arange(Nobs)):
-            detected=False
-            while detected==False:
-                obs = self.sample(1, weighted_kde=False)[0]
-                # convert to component masses
-                if set(['mchirp','q']).issubset(set(params)):
-                    m1, m2 = mchirpq_to_m1m2(obs[params.index('mchirp')],obs[params.index('q')])
-                elif set(['mtot','q']).issubset(set(params)):
-                    m1, m2 = mtotq_to_m1m2(obs[params.index('mtot')],obs[params.index('q')])
-                elif set(['mtot','eta']).issubset(set(params)):
-                    m1, m2 = mtoteta_to_m1m2(obs[params.index('mtot')],obs[params.index('eta')])
-                # convert to component spins
-                if spin_info == True:
-                    s1, s2 = chieff_to_s1s2(obs[params.index('chieff')])
-                else:
-                    s1, s2 = (0,0,0), (0,0,0)
-                # get redshift
-                z = obs[params.index('z')]
 
-                # see whether the system is detected, this will either be 1 or 0 for a single Ntrial
-                system = [m1,m2,z,s1,s2]
-                pdet, snr, Theta = detection_probability(system, ifos=_PSD_defaults[self.detector], rho_thresh=self.snr_thresh, Ntrials=1, return_snr=True, psd_path=psd_path)
-                if pdet>0:
-                    observations[n,:] = obs
-                    snrs[n] = np.float(snr)
-                    Thetas[n] = np.float(Theta)
-                    detected=True
+        if multiproc==True:
+            processes = []
+            manager = multiprocessing.Manager()
+            obs_dict = manager.dict()
+            snr_dict = manager.dict()
+            Theta_dict = manager.dict()
+
+            for idx, n in tqdm(enumerate(np.arange(Nobs)), total=Nobs):
+                p = multiprocessing.Process(target=self.draw_from_underlying_pop, args=(params, psd_path, spin_info, idx, obs_dict, snr_dict, Theta_dict,))
+                processes.append(p)
+                p.start()
+            for process in processes:
+                process.join()
+
+            for i in sorted(list(obs_dict.keys())):
+                observations[i,:] = obs_dict[i]
+            for i in sorted(list(snr_dict.keys())):
+                snrs[i] = snr_dict[i]
+            for i in sorted(list(Theta_dict.keys())):
+                Thetas[i] = Theta_dict[i]
+
+        else:
+            for idx, n in tqdm(enumerate(np.arange(Nobs)), total=Nobs):
+                observations[idx,:], snrs[idx], Thetas[idx] = self.draw_from_underlying_pop(params, psd_path, spin_info)
 
         self.observations = observations
         self.snrs = snrs
         self.Thetas = Thetas
         return observations
+
+    def draw_from_underlying_pop(self, params, psd_path, spin_info, proc_idx=None, obs_dict=None, snr_dict=None, Theta_dict=None):
+        # if multiprocessing, need to set random seeds differently
+        if proc_idx is not None:
+            np.random.seed(proc_idx)
+
+        detected=False
+        while detected==False:
+            obs = self.sample(1, weighted_kde=False)[0]
+            # convert to component masses
+            if set(['mchirp','q']).issubset(set(params)):
+                m1, m2 = mchirpq_to_m1m2(obs[params.index('mchirp')],obs[params.index('q')])
+            elif set(['mtot','q']).issubset(set(params)):
+                m1, m2 = mtotq_to_m1m2(obs[params.index('mtot')],obs[params.index('q')])
+            elif set(['mtot','eta']).issubset(set(params)):
+                m1, m2 = mtoteta_to_m1m2(obs[params.index('mtot')],obs[params.index('eta')])
+            # convert to component spins
+            if spin_info == True:
+                s1, s2 = chieff_to_s1s2(obs[params.index('chieff')])
+            else:
+                s1, s2 = (0,0,0), (0,0,0)
+            # get redshift
+            z = obs[params.index('z')]
+
+            # see whether the system is detected, this will either be 1 or 0 for a single Ntrial
+            system = [m1,m2,z,s1,s2]
+            pdet, snr, Theta = detection_probability(system, ifos=_PSD_defaults[self.detector], rho_thresh=self.snr_thresh, Ntrials=1, return_snr=True, psd_path=psd_path)
+            if pdet>0:
+                detected=True
+
+                # store values for multiprocessing
+                if obs_dict is not None:
+                    obs_dict[proc_idx] = obs
+                    snr_dict[proc_idx] = np.float(snr)
+                    Theta_dict[proc_idx] = np.float(Theta)
+
+        return obs, np.float(snr), np.float(Theta)
 
 
     def measurement_uncertainty(self, Nsamps, method='delta', observation_noise=False):
