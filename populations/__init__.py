@@ -4,6 +4,8 @@ import pickle
 import itertools
 import copy
 from tqdm import tqdm
+import multiprocessing
+from functools import partial
 import warnings
 import pdb
 
@@ -124,6 +126,9 @@ class KDEModel(Model):
             pdf_scale = scale_to_unity(self.param_bounds)
         else:
             samples = np.asarray(samples)
+            pdf_scale = None
+        self.pdf_scale = pdf_scale
+        
 
         # add a little bit of scatter to samples that have the exact same values, as this will freak out the KDE generator
         for idx, param in enumerate(samples.T):
@@ -181,7 +186,7 @@ class KDEModel(Model):
         """
         self.Nobs_from_beta = Nobs
 
-    def freeze(self, data, data_pdf=None):
+    def freeze(self, data, data_pdf=None, multiproc=True):
         """
         Caches the values of the model PDF at the data points provided. This \
         is useful to construct the hierarchal model likelihood since \
@@ -189,9 +194,35 @@ class KDEModel(Model):
         because it's a fixed value, dependent only on the observations
         """
         self.cached_values = None
-        self.cached_values = self(data, data_pdf)
+        dpdf = data_pdf if data_pdf is not None else np.ones(data.shape[0])
+        pdf_vals = []
 
-    def __call__(self, data, data_pdf=None):
+        if multiproc==True:
+
+            processes = []
+            manager = multiprocessing.Manager()
+            return_dict = manager.dict()
+            for idx, (d,dp) in tqdm(enumerate(zip(data,dpdf)), total=len(data)):
+                d = d.reshape((1, d.shape[0], d.shape[1]))
+                dp = [dp]
+                p = multiprocessing.Process(target=self, args=(d,dp,idx,return_dict,))
+                processes.append(p)
+                p.start()
+            for process in processes:
+                process.join()
+
+            for i in sorted(list(return_dict.keys())):
+                pdf_vals.append(return_dict[i])
+        else:
+            for idx, (d,dp) in tqdm(enumerate(zip(data,dpdf)), total=len(data)):
+                d = d.reshape((1, d.shape[0], d.shape[1]))
+                dp = [dp]
+                pdf_vals.append(self(d, dp))
+
+        pdf_vals = np.asarray(pdf_vals).flatten()
+        self.cached_values = pdf_vals
+
+    def __call__(self, data, data_pdf=None, proc_idx=None, return_dict=None):
         """
         The expectation is that "data" is a [Nobs x Nsample x Nparams] array. \
         If data_pdf is None, each observation is expected to have equal \
@@ -207,6 +238,9 @@ class KDEModel(Model):
             d_pdf = data_pdf[idx] if data_pdf is not None else 1
             # FIXME: does it matter that we average rather than sum?
             prob[idx] += np.sum(self.pdf(obs) / d_pdf) / len(obs)
+        # store value for multiprocessing
+        if return_dict is not None:
+            return_dict[proc_idx] = prob
         return prob
 
     def marginalize(self, params):
@@ -220,7 +254,7 @@ class KDEModel(Model):
 
         return KDEModel(label, self.samples[params], self.cosmo_weights, self.det_weights, self.detectable_convfac, self.normalize)
 
-    def generate_observations(self, Nobs, uncertainty, detector='design_network', psd_path=None):
+    def generate_observations(self, Nobs, uncertainty, detector='design_network', psd_path=None, multiproc=True):
         """
         Generates samples from KDE model. This will generated Nobs samples, storing the attribute 'self.observations' with dimensions [Nobs x Nparam]. 
         """
@@ -262,38 +296,73 @@ class KDEModel(Model):
         observations = np.zeros((Nobs, self.samples.shape[-1]))
         snrs = np.zeros(Nobs)
         Thetas = np.zeros(Nobs)
-        for n in tqdm(np.arange(Nobs)):
-            detected=False
-            while detected==False:
-                obs = self.sample(1, weighted_kde=False)[0]
-                # convert to component masses
-                if set(['mchirp','q']).issubset(set(params)):
-                    m1, m2 = mchirpq_to_m1m2(obs[params.index('mchirp')],obs[params.index('q')])
-                elif set(['mtot','q']).issubset(set(params)):
-                    m1, m2 = mtotq_to_m1m2(obs[params.index('mtot')],obs[params.index('q')])
-                elif set(['mtot','eta']).issubset(set(params)):
-                    m1, m2 = mtoteta_to_m1m2(obs[params.index('mtot')],obs[params.index('eta')])
-                # convert to component spins
-                if spin_info == True:
-                    s1, s2 = chieff_to_s1s2(obs[params.index('chieff')])
-                else:
-                    s1, s2 = (0,0,0), (0,0,0)
-                # get redshift
-                z = obs[params.index('z')]
 
-                # see whether the system is detected, this will either be 1 or 0 for a single Ntrial
-                system = [m1,m2,z,s1,s2]
-                pdet, snr, Theta = detection_probability(system, ifos=_PSD_defaults[self.detector], rho_thresh=self.snr_thresh, Ntrials=1, return_snr=True, psd_path=psd_path)
-                if pdet>0:
-                    observations[n,:] = obs
-                    snrs[n] = np.float(snr)
-                    Thetas[n] = np.float(Theta)
-                    detected=True
+        if multiproc==True:
+            processes = []
+            manager = multiprocessing.Manager()
+            obs_dict = manager.dict()
+            snr_dict = manager.dict()
+            Theta_dict = manager.dict()
+
+            for idx in tqdm(np.arange(Nobs)):
+                p = multiprocessing.Process(target=self.draw_from_underlying_pop, args=(params, psd_path, spin_info, idx, obs_dict, snr_dict, Theta_dict,))
+                processes.append(p)
+                p.start()
+            for process in processes:
+                process.join()
+
+            for i in sorted(list(obs_dict.keys())):
+                observations[i,:] = obs_dict[i]
+            for i in sorted(list(snr_dict.keys())):
+                snrs[i] = snr_dict[i]
+            for i in sorted(list(Theta_dict.keys())):
+                Thetas[i] = Theta_dict[i]
+
+        else:
+            for idx, n in tqdm(enumerate(np.arange(Nobs)), total=Nobs):
+                observations[idx,:], snrs[idx], Thetas[idx] = self.draw_from_underlying_pop(params, psd_path, spin_info)
 
         self.observations = observations
         self.snrs = snrs
         self.Thetas = Thetas
         return observations
+
+    def draw_from_underlying_pop(self, params, psd_path, spin_info, proc_idx=None, obs_dict=None, snr_dict=None, Theta_dict=None):
+        # if multiprocessing, need to set random seeds differently
+        if proc_idx is not None:
+            np.random.seed()
+
+        detected=False
+        while detected==False:
+            obs = self.sample(1, weighted_kde=False)[0]
+            # convert to component masses
+            if set(['mchirp','q']).issubset(set(params)):
+                m1, m2 = mchirpq_to_m1m2(obs[params.index('mchirp')],obs[params.index('q')])
+            elif set(['mtot','q']).issubset(set(params)):
+                m1, m2 = mtotq_to_m1m2(obs[params.index('mtot')],obs[params.index('q')])
+            elif set(['mtot','eta']).issubset(set(params)):
+                m1, m2 = mtoteta_to_m1m2(obs[params.index('mtot')],obs[params.index('eta')])
+            # convert to component spins
+            if spin_info == True:
+                s1, s2 = chieff_to_s1s2(obs[params.index('chieff')])
+            else:
+                s1, s2 = (0,0,0), (0,0,0)
+            # get redshift
+            z = obs[params.index('z')]
+
+            # see whether the system is detected, this will either be 1 or 0 for a single Ntrial
+            system = [m1,m2,z,s1,s2]
+            pdet, snr, Theta = detection_probability(system, ifos=_PSD_defaults[self.detector], rho_thresh=self.snr_thresh, Ntrials=1, return_snr=True, psd_path=psd_path)
+            if pdet>0:
+                detected=True
+
+                # store values for multiprocessing
+                if obs_dict is not None:
+                    obs_dict[proc_idx] = obs
+                    snr_dict[proc_idx] = np.float(snr)
+                    Theta_dict[proc_idx] = np.float(Theta)
+
+        return obs, np.float(snr), np.float(Theta)
 
 
     def measurement_uncertainty(self, Nsamps, method='delta', observation_noise=False):
@@ -444,5 +513,4 @@ def scale_to_unity(bounds):
     ranges = [b[1]-b[0] for b in bounds]
     scale_factor = np.product(ranges)
     return scale_factor
-
 
