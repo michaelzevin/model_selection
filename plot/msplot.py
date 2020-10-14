@@ -92,7 +92,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                 I_am_legend = False
                 if model0:
                     if (kde.label == model0[channel].label) and (pidx==(len(params)-1)):
-                        label = channel+r" ($\beta$={0:0.1f})".format(kde.rel_frac)
+                        label = channel+r" ($\beta$={0:0.2f})".format(kde.rel_frac)
                         I_am_legend = True
                     else:
                         label=None

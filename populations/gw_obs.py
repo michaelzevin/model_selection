@@ -15,11 +15,12 @@ key containing the posterior samples should be consistent with the naming
 scheme of GWTC-1.
 """
 
-# gw events to be used
-_events = ["GW150914","GW151012","GW151226","GW170104","GW170608","GW170729",
-"GW170809","GW170814","GW170818","GW170823"]
-_files = []
-_posterior_key = "Overall_posterior"
+# can specify only a subset of GW events to use by uncommenting the line below
+_events_to_use = None
+#_events_to_use = ["GW150914","GW151012","GW151226","GW170104","GW170608","GW170729","GW170809","GW170814","GW170818","GW170823"]
+
+# specify the hdf5 key for the approximant being used
+_posterior_key = "combined"
 
 # conversion function
 def _gwtc_to_mchirp(gw):
@@ -57,36 +58,44 @@ gwtc_transforms = {'mchirp': _gwtc_to_mchirp, 'q': _gwtc_to_q, \
 
 def generate_observations(params, gwpath, Nsamps, mesaurement_uncertainty=None):
 
+    if _events_to_use:
+        gw_names = _events_to_use
+        gw_files = [gw+'.hdf5' for gw in gw_names]
+    else:
+        gw_files = os.listdir(gwpath)
+        gw_names = [gw.split('.')[0] for gw in gw_files]
+
     # Check to see if the files are in the obspath, else raise error
-    for gw in _events:
-        ctr=0
-        for f in os.listdir(gwpath):
-            if gw in f:
-                _files.append(f)
-                ctr+=1
-        if ctr==0:
-            raise ValueError("Posterior samples for {0:s} not in the \
-directory '{1:s}'!".format(gw,gwpath))
-        if ctr>1:
-            raise ValueError("More than one posterior sample file for {0:s} \
-is present in the directory '{1:s}'!".format(gw,gwpath))
+    if _events_to_use:
+        for gw_file, gw_name in zip(gw_files,gw_names):
+            ctr=0
+            tmp = []
+            for f in os.listdir(gwpath):
+                if gw_file in f:
+                    ctr+=1
+            if ctr==0:
+                raise ValueError("Posterior samples for {0:s} not in the \
+    directory '{1:s}'!".format(gw,gwpath))
+            if ctr>1:
+                raise ValueError("More than one posterior sample file for {0:s} \
+    is present in the directory '{1:s}'!".format(gw,gwpath))
 
 
     # Set up samples for the specified smearing, as well as observations
-    observations = np.zeros((len(_events), len(params)))
+    observations = np.zeros((len(gw_files), len(params)))
     if not mesaurement_uncertainty:
-        samples_shape = (len(_events), 1, len(params))
+        samples_shape = (len(gw_files), 1, len(params))
         samples=np.zeros(samples_shape)
     elif mesaurement_uncertainty in ['gaussian', 'posteriors']:
-        samples_shape = (len(_events), Nsamps, len(params))
+        samples_shape = (len(gw_files), Nsamps, len(params))
         samples=np.zeros(samples_shape)
     else:
         raise ValueError("{0:s} is not an available options for smearing GW \
 observations!".format(mesaurement_uncertainty))
 
     # Now, get the samples for each event
-    for idx, f in enumerate(_files):
-        df = pd.read_hdf(gwpath+f, key=_posterior_key)
+    for idx, f in enumerate(gw_files):
+        df = pd.read_hdf(os.path.join(gwpath,f), key=_posterior_key)
         # Check to see if the necessary parameters are in the files or the 
         # transformations provided, else raise error
         for pidx, p in enumerate(params):
@@ -125,5 +134,5 @@ no transformations exist to generate it from the GW data!".format(p))
                 else:
                     samples[idx, :, pidx] = df[p].sample(Nsamps, replace=True)
 
-    return observations, samples, _events
+    return observations, samples, gw_names
 

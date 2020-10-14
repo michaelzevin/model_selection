@@ -39,7 +39,7 @@ argp.add_argument("--uncertainty", type=str, help="Smear out observations in a m
 argp.add_argument("--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the spin magnitude is not specified. Default is None.")
 argp.add_argument("--detectable-beta", action="store_true", help="If True, will assume the supplied branching fractions represent the branching fractions of *detected* events. If False, will assume the supplied branching fractions represent the branching fractions of *underlying* events. Default is False.")
 argp.add_argument("--Nobs-probabilistic", action="store_true", help="If True, will determine the number of observations to draw from each channel in a 'probabilistic' sense based on the branching fractions using random number generator. If False, do the best rounding it can based on the input branching fractions. Default is False.")
-argp.add_argument("-mp", "--multiproc", action="store_true", help="Deterines whether to use multithreading for freezing samples in the KDEs and drawing samples from the underlying distribution using SNR calculations. Default is False.")
+argp.add_argument("-mp", "--multiproc", action="store_true", help="Determines whether to use multithreading for freezing samples in the KDEs and drawing samples from the underlying distribution using SNR calculations. Default is False.")
 argp.add_argument("--make-plots", action="store_true", help="Determines whether to make accompanying plots. Default is False.")
 argp.add_argument("-V", "--verbose", action="store_true", help="Determines whether to be verbose in the code. Default is False.")
 argp.add_argument("-S", "--save-samples", action="store_true", help="Save all the samples rather than just the summary statistics. Default is False.")
@@ -214,7 +214,7 @@ if verbose:
 # Calls gw_obs.py to generate samples if argument is passed
 if gwobs:
     model0=None
-    observations, obsdata, events = gw_obs.generate_observations(params, args.gwpath, \
+    observations, obsdata, events = gw_obs.generate_observations(params, args.gw_path, \
                                             args.Nsamps, args.uncertainty)
     if verbose:
         print("Using the following {0:d} GW observations for inference:".format(len(events)))
