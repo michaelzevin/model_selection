@@ -37,8 +37,8 @@ _PSDs_for_pdet = ['midhighlatelow','midhighlatelow_network','design','design_net
 
 ### Argument handling
 argp = argparse.ArgumentParser()
-argp.add_argument("--file-path", type=str, required=True, help="Path to population models that need detection weights.")
-argp.add_argument("--psd-path", type=str, required=True, help="Path to directory  with PSD files, saved in same format as Observing Scenarios data release.")
+argp.add_argument("--file-path", type=str, required=True, help="Path to population models that need detection weights. These should be stored in a hdf5 file with the following hierarchical structure: channel/param0/param1...")
+argp.add_argument("--psd-path", type=str, required=True, help="Path to directory with PSD files, saved in same format as Observing Scenarios data release.")
 argp.add_argument("--model", type=str, default=None, help="HDF key for the model you wish to run selection effects on. If None, will run for all models the file.")
 argp.add_argument("--Ntrials", type=int, default=1000, help="Define the number of monte carlo trails used for calculating the average SNR. Default=1000")
 argp.add_argument("--multiproc", type=int, default=1, help="Number of cores you want to use. Default=1")
@@ -102,8 +102,11 @@ for model in models:
             for system in tqdm(systems_info):
                 results.append(func(system))
 
-        pop[name] = results
+        results = np.reshape(results, (len(results),2))
+        pop['pdet_'+name] = results[:,0]
+        pop['snropt_'+name] = results[:,1]
 
+    import pdb; pdb.set_trace()
     # save pop model
     pop.to_hdf(args.file_path, key=model, mode='a')
 
