@@ -34,10 +34,10 @@ argp.add_argument("-b", "--betas", nargs="*", help="Sets the branching fraction 
 argp.add_argument("-p", "--params", nargs="+", default="mchirp", help="Specifies the parameters you wish to use in the inference. Default=mchirp.")
 argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations to be taken from the mixture model. Must be set if gwobs not used. Default=None.")
 argp.add_argument("-N", "--Nsamps", type=int, default=100, help="Number of samples to be drawn from the posterior distributions and used to construct the KDE models. Default=100.")
-argp.add_argument("--sensitivity", type=str, help="Name of column in dataframe of detection probabilities, which should have the same name as the network sensitivity and configuration you wish to use. This is used to construct a 'detection-weighted' kde. These weights have the same name as the network sensitivity from the LVC Observing Scenarios, and have '_network' appended if using a 3-detector configuration. Default=None.")
+argp.add_argument("--pdet", type=str, help="Name of column in dataframes with detection probabilities. This is used to construct a 'detection-weighted' kde, as well as drawing samples from the underlying distributions. These weights have the same name as the network sensitivity from the LVC Observing Scenarios, and have '_network' appended if using a 3-detector configuration. Default=None.")
 argp.add_argument("--uncertainty", type=str, help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posteriors'), or from a mock gaussian with the mean and sigma of observations ('gaussian'). For mock observations, you can choose to smear according to the average spread in parameters from current GW observations ('gwevents'), or use a gaussian with an SNR-dependent sigma ('snr'). Default=None.")
 argp.add_argument("--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the spin magnitude is not specified. Default is None.")
-argp.add_argument("--detectable-beta", action="store_true", help="If True, will assume the supplied branching fractions represent the branching fractions of *detected* events. If False, will assume the supplied branching fractions represent the branching fractions of *underlying* events. Default is False.")
+argp.add_argument("--samples-from-kde", action="store_true", help="If True, events are drawn probabalistically from the detection-weighted KDE. Otherwise, samples drawn from the actual population models, weighted by pdet. These *should* result in similar results (modulo sampling uncertainty). Default is False.")
 argp.add_argument("--Nobs-probabilistic", action="store_true", help="If True, will determine the number of observations to draw from each channel in a 'probabilistic' sense based on the branching fractions using random number generator. If False, do the best rounding it can based on the input branching fractions. Default is False.")
 argp.add_argument("-mp", "--multiproc", action="store_true", help="Determines whether to use multithreading for freezing samples in the KDEs and drawing samples from the underlying distribution using SNR calculations. Default is False.")
 argp.add_argument("--make-plots", action="store_true", help="Determines whether to make accompanying plots. Default is False.")
@@ -67,7 +67,7 @@ def setInDict(dataDict, mapList, value):
 
 # --- Load in models/kdemodels into dict structure: models[model][channel]
 # `normalize` argument normalizes KDEs on unit cube
-model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=False, verbose=verbose)
+model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, pdet=args.pdet, normalize=False, verbose=verbose)
 model_names.sort()
 params = args.params
 hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
@@ -168,6 +168,7 @@ if not gwobs:
     if verbose:
         print("Saving relative fractions and storing true model...\n")
 
+    # FIXME: I don't think we'll need detectable convfacs now...
     # since channels are sorted alphabetically, branching fractions are defined in the same order
     model0 = {}
     detectable_convfacs = []
@@ -240,13 +241,13 @@ else:
         model0[channel].Nobs_from_beta(Nobs_per_channel)
         if idx==0:
             observations = model0[channel].generate_observations(Nobs_per_channel, args.uncertainty,\
-                detector=args.sensitivity, psd_path=args.psd_path, multiproc=args.multiproc)
+                detector=args.pdet, psd_path=args.psd_path, multiproc=args.multiproc)
             obsdata = model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)
         else:
             observations = np.concatenate((observations, \
                 model0[channel].generate_observations(Nobs_per_channel, args.uncertainty, \
-                detector=args.sensitivity, psd_path=args.psd_path, multiproc=args.multiproc)))
+                detector=args.pdet, psd_path=args.psd_path, multiproc=args.multiproc)))
             obsdata = np.concatenate((obsdata, \
                 model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)))

@@ -45,29 +45,29 @@ class Model(object):
 
 class KDEModel(Model):
     @staticmethod
-    def from_samples(label, samples, params, sensitivity=None, normalize=False, **kwargs):
+    def from_samples(label, samples, params, pdet=None, normalize=False, **kwargs):
         """
         Generate a KDE model instance from :samples:, where :params: are \
         series in the :samples: dataframe. Additional :kwargs: are passed to \
         nothing at the moment. If 'weight' is a column in your population \
         model, will assume this is the cosmological weight of each sample, and \
-        will include this in the construction of all your KDEs. If :sensitivity: \
+        will include this in the construction of all your KDEs. If `pdet` \
         is provided, samples used to generate the detection-weighted KDE will be \
-        weighted according to the key in the argument :sensitivity:.
+        weighted according to the key in the argument `pdet`.
         """
-        # check that the provdided sensitivity is in the dataframe
-        if sensitivity is not None:
-            if sensitivity not in samples.columns:
+        # check that the provdided pdet series is in the dataframe
+        if pdet is not None:
+            if pdet not in samples.columns:
                 raise ValueError("{0:s} was specified for your detection weights, but cannot find this column in the samples datafarme!")
                 
         # get the conversion factor between the underlying and detectable populatin
-        if sensitivity is not None:
+        if pdet is not None:
             # if cosmological weights are provided, do mock draws from the pop
             if 'weight' in samples.keys():
                 mock_samp = samples.sample(int(1e6), weights=samples['weight'], replace=True)
             else:
                 mock_samp = samples.sample(int(1e6), replace=True)
-            detectable_convfac = np.sum(mock_samp[sensitivity]) / len(mock_samp)
+            detectable_convfac = np.sum(mock_samp[pdet]) / len(mock_samp)
         else:
             detectable_convfac = 1.0
 
@@ -82,8 +82,8 @@ class KDEModel(Model):
         else:
             cosmo_weights = np.ones(len(samples)) / len(samples)
         # if detection weights are provided...
-        if sensitivity is not None:
-            det_weights = samples[sensitivity] / np.sum(samples[sensitivity])
+        if pdet is not None:
+            det_weights = samples[pdet] / np.sum(samples[pdet])
         else:
             det_weights = np.ones(len(samples)) / len(samples)
 

@@ -46,7 +46,7 @@ def get_params(df, params):
     return df
 
 
-def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, normalize=False, verbose=False, **kwargs):
+def get_models(file_path, channels, params, spin_distr=None, pdet=None, normalize=False, verbose=False, **kwargs):
     """
     Call this to get all the models and submodels, as well
     as KDEs of these models, packed inside of dictionaries labelled in the
@@ -94,7 +94,7 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
                     # if we are on the last level, read in data and store kdes
                     df = pd.read_hdf(file_path, key=smdl)
                     label = '/'.join(smdl_list)
-                    mdl = KDEModel.from_samples(label, df, params, sensitivity=sensitivity, normalize=normalize)
+                    mdl = KDEModel.from_samples(label, df, params, pdet=pdet, normalize=normalize)
                     current_level[part] = mdl
                 else:
                     current_level[part] = {}
