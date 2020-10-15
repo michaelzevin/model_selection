@@ -232,7 +232,7 @@ def gen_redshifts_unicomvol(n=1, z_max=3):
 
 
 # Detection probability function
-def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, Ntrials=1000, return_snr=False, **kwargs):
+def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, Ntrials=1000, return_snrs=False, **kwargs):
     """
     Calls other functions in this file to calculate a detection probability
     For multiprocessing purposes, takes in array 'system' of form:
@@ -296,24 +296,24 @@ def detection_probability(system, ifos={"H1":"midhighlatelow"}, rho_thresh=8.0, 
         # calculate projection factor
         Thetas = snrs/snr_opt
 
-    if return_snr==True:
-        return weight, snrs, Thetas
+    if return_snrs==True:
+        return weight, snr_opt, snrs, Thetas
     else:
-        return weight
+        return weight, snr_opt
 
 
 
 _PSD_defaults = {
     "ligo_psd": "LIGO_P1200087.dat",
     "virgo_psd": "Virgo_P1200087.dat",
-    "midhighlatelow": {"H1":"midhighlatelow"}, 
-    "midhighlatelow_network": {"H1":"midhighlatelow", 
+    "midhighlatelow": {"H1":"midhighlatelow"},
+    "midhighlatelow_network": {"H1":"midhighlatelow",
             "L1":"midhighlatelow",
             "V1":"midhighlatelow"},
     "design": {"H1":"design"},
     "design_network": {"H1":"design",
             "L1":"design",
-            "V1":"design"}, 
-    "snr_single": 8, 
+            "V1":"design"},
+    "snr_single": 8,
     "snr_network": 12}
 

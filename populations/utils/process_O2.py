@@ -1,3 +1,5 @@
+### This function is used to pre-calculate redshifts (along with some other useful quantities) using the information from the GWTC-1 data release
+
 import os
 import numpy as np
 import pandas as pd

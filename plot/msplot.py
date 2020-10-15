@@ -290,7 +290,7 @@ def plot_samples(samples, submodels_dict, model_names, channels, model0, name=No
         model0_name='GW observations'
     plt.suptitle("True model: {0:s}".format(model0_name), fontsize=40)
     if name:
-        fname = 'samples_'+name+'_hyperidx'+str(hyper_idx)+'.png'
+        fname = 'samples_hyperidx'+str(hyper_idx)+'_'+name+'.png'
     else:
         fname = 'samples_hyperidx'+str(hyper_idx)+'.png'
     plt.subplots_adjust(bottom=0.15)
