@@ -106,7 +106,6 @@ for model in models:
         pop['pdet_'+name] = results[:,0]
         pop['snropt_'+name] = results[:,1]
 
-    import pdb; pdb.set_trace()
     # save pop model
     pop.to_hdf(args.file_path, key=model, mode='a')
 
