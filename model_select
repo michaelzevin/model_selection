@@ -37,7 +37,8 @@ argp.add_argument("-N", "--Nsamps", type=int, default=100, help="Number of sampl
 argp.add_argument("--sensitivity", type=str, help="Name of desired interferometer sensitivity. Should be consistent with the string following the `pdet` and `snropt` columns in the population dataframes. This is used to construct a detection-weighted kde, as well as for drawing samples from the underlying distributions. By default, these weights have the same name as the network sensitivity from the LVC Observing Scenarios, and have '_network' appended if using a 3-detector configuration. Default=None.")
 argp.add_argument("--uncertainty", type=str, help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posteriors'), or from a mock gaussian with the mean and sigma of observations ('gaussian'). For mock observations, you can choose to smear according to the average spread in parameters from current GW observations ('gwevents'), or use a gaussian with an SNR-dependent sigma ('snr'). Default=None.")
 argp.add_argument("--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the spin magnitude is not specified. Default is None.")
-argp.add_argument("--samples-from-kde", action="store_true", help="If True, events are drawn probabalistically from the detection-weighted KDE. Otherwise, samples drawn from the actual population models, weighted by pdet. These *should* result in similar results (modulo sampling uncertainty). Default is False.")
+argp.add_argument("--sample-from-kde", action="store_true", help="If True, events are drawn probabalistically from the detection-weighted KDE. Otherwise, samples drawn from the actual population models, weighted by pdet. These *should* result in similar results (modulo sampling uncertainty). Default is False.")
+argp.add_argument("--detectable-beta", action="store_true", help="If True, will assume the supplied branching fractions represent the branching fractions of *detected* events. If False, will assume the supplied branching fractions represent the branching fractions of *underlying* events. Default is False.")
 argp.add_argument("--Nobs-probabilistic", action="store_true", help="If True, will determine the number of observations to draw from each channel in a 'probabilistic' sense based on the branching fractions using random number generator. If False, do the best rounding it can based on the input branching fractions. Default is False.")
 argp.add_argument("-mp", "--multiproc", action="store_true", help="Determines whether to use multithreading for freezing samples in the KDEs and drawing samples from the underlying distribution using SNR calculations. Default is False.")
 argp.add_argument("--make-plots", action="store_true", help="Determines whether to make accompanying plots. Default is False.")
@@ -67,7 +68,7 @@ def setInDict(dataDict, mapList, value):
 
 # --- Load in models/kdemodels into dict structure: models[model][channel]
 # `normalize` argument normalizes KDEs on unit cube
-model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=False, verbose=verbose)
+model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=True, verbose=verbose)
 model_names.sort()
 params = args.params
 hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
@@ -224,7 +225,10 @@ if gwobs:
 
 else:
     if verbose:
-        print("Drawing {0:d} observations from model0, using the '{1:s}' method for measurement uncertainty...\n".format(int(args.Nobs), args.uncertainty))
+        if args.detectable_beta:
+            print("Drawing {0:d} observations from model0, assuming that the branching fractions represent the *detectable* distribution, and using the '{1:s}' method for measurement uncertainty...\n".format(int(args.Nobs), args.uncertainty))
+        else:
+            print("Drawing {0:d} observations from model0, assuming that the branching fractions represent the *underlying* distribution, and using the '{1:s}' method for measurement uncertainty...\n".format(int(args.Nobs), args.uncertainty))
     rand_vars = np.random.random(size=args.Nobs)
     randlow_hold = 0
     for idx, channel in enumerate(model0):
@@ -235,19 +239,22 @@ else:
         elif args.Nobs_probabilistic==False:
             # first check that the branching fractions * Nobs are integers
             if not (args.Nobs*model0[channel].rel_frac).is_integer():
-                warnings.warn('Number of observations is not divisble by branching fractions, this may result in drawing a number of samples slighty different than what was specified!')
+                if args.detectable_beta==True:
+                    warnings.warn("Number of observations is not divisble by detectable branching fractions provided, this may result in drawing a number of samples slighty different than what was specified!")
             Nobs_per_channel = int(np.round(args.Nobs * model0[channel].rel_frac))
         # add attribute for number of observations drawn
         model0[channel].Nobs_from_beta(Nobs_per_channel)
         if idx==0:
             observations = model0[channel].generate_observations(Nobs_per_channel, args.uncertainty,\
-                detector=args.sensitivity, psd_path=args.psd_path, multiproc=args.multiproc)
+                sample_from_kde=args.sample_from_kde, sensitivity=args.sensitivity, \
+                psd_path=args.psd_path, multiproc=args.multiproc)
             obsdata = model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)
         else:
             observations = np.concatenate((observations, \
                 model0[channel].generate_observations(Nobs_per_channel, args.uncertainty, \
-                detector=args.sensitivity, psd_path=args.psd_path, multiproc=args.multiproc)))
+                sample_from_kde=args.sample_from_kde, sensitivity=args.sensitivity, \
+psd_path=args.psd_path, multiproc=args.multiproc)))
             obsdata = np.concatenate((obsdata, \
                 model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True)))
