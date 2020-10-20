@@ -37,6 +37,7 @@ argp.add_argument("-N", "--Nsamps", type=int, default=100, help="Number of sampl
 argp.add_argument("--sensitivity", type=str, help="Name of desired interferometer sensitivity. Should be consistent with the string following the `pdet` and `snropt` columns in the population dataframes. This is used to construct a detection-weighted kde, as well as for drawing samples from the underlying distributions. By default, these weights have the same name as the network sensitivity from the LVC Observing Scenarios, and have '_network' appended if using a 3-detector configuration. Default=None.")
 argp.add_argument("--uncertainty", type=str, help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posteriors'), or from a mock gaussian with the mean and sigma of observations ('gaussian'). For mock observations, you can choose to smear according to the average spread in parameters from current GW observations ('gwevents'), or use a gaussian with an SNR-dependent sigma ('snr'). Default=None.")
 argp.add_argument("--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the spin magnitude is not specified. Default is None.")
+argp.add_argument("--normalize-kde", action="store_true", help="If True, will normalize KDE to unit cube. Default is False.")
 argp.add_argument("--sample-from-kde", action="store_true", help="If True, events are drawn probabalistically from the detection-weighted KDE. Otherwise, samples drawn from the actual population models, weighted by pdet. These *should* result in similar results (modulo sampling uncertainty). Default is False.")
 argp.add_argument("--detectable-beta", action="store_true", help="If True, will assume the supplied branching fractions represent the branching fractions of *detected* events. If False, will assume the supplied branching fractions represent the branching fractions of *underlying* events. Default is False.")
 argp.add_argument("--Nobs-probabilistic", action="store_true", help="If True, will determine the number of observations to draw from each channel in a 'probabilistic' sense based on the branching fractions using random number generator. If False, do the best rounding it can based on the input branching fractions. Default is False.")
@@ -68,7 +69,7 @@ def setInDict(dataDict, mapList, value):
 
 # --- Load in models/kdemodels into dict structure: models[model][channel]
 # `normalize` argument normalizes KDEs on unit cube
-model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=True, verbose=verbose)
+model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, verbose=verbose)
 model_names.sort()
 params = args.params
 hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
@@ -169,10 +170,9 @@ if not gwobs:
     if verbose:
         print("Saving relative fractions and storing true model...\n")
 
-    # FIXME: I don't think we'll need detectable convfacs now...
     # since channels are sorted alphabetically, branching fractions are defined in the same order
     model0 = {}
-    detectable_convfacs = []
+    detectable_convfacs_model0 = []
     for idx, channel in enumerate(channels):
         channel_mdls = [x for x in model_names if channel+'/' in x]
         for model in channel_mdls:
@@ -180,15 +180,15 @@ if not gwobs:
             # print info about model0
             if (smdl in args.model0):
                 model0[channel] = getFromDict(kde_models, model.split('/'))
-                detectable_convfacs.append(model0[channel].detectable_convfac)
+                detectable_convfacs_model0.append(model0[channel].detectable_convfac)
 
     # determine whether supplied branching fractions are for the detectable or the underlying population
     if args.detectable_beta==True:
         detectable_betas = np.asarray(betas)
-        underlying_betas = np.asarray(betas) / np.asarray(detectable_convfacs)
+        underlying_betas = np.asarray(betas) / np.asarray(detectable_convfacs_model0)
         underlying_betas /= np.sum(underlying_betas)
     elif args.detectable_beta==False:
-        detectable_betas = np.asarray(betas) * np.asarray(detectable_convfacs)
+        detectable_betas = np.asarray(betas) * np.asarray(detectable_convfacs_model0)
         detectable_betas /= np.sum(detectable_betas)
         underlying_betas = np.asarray(betas)
 
@@ -226,9 +226,9 @@ if gwobs:
 else:
     if verbose:
         if args.detectable_beta:
-            print("Drawing {0:d} observations from model0, assuming that the branching fractions represent the *detectable* distribution, and using the '{1:s}' method for measurement uncertainty...\n".format(int(args.Nobs), args.uncertainty))
+            print("Drawing {0:d} observations from model0, assuming that the branching fractions represent the *detectable* distribution, and using the '{1:s}' method for measurement uncertainty...".format(int(args.Nobs), args.uncertainty))
         else:
-            print("Drawing {0:d} observations from model0, assuming that the branching fractions represent the *underlying* distribution, and using the '{1:s}' method for measurement uncertainty...\n".format(int(args.Nobs), args.uncertainty))
+            print("Drawing {0:d} observations from model0, assuming that the branching fractions represent the *underlying* distribution, and using the '{1:s}' method for measurement uncertainty...".format(int(args.Nobs), args.uncertainty))
     rand_vars = np.random.random(size=args.Nobs)
     randlow_hold = 0
     for idx, channel in enumerate(model0):
@@ -247,29 +247,31 @@ else:
         if idx==0:
             observations = model0[channel].generate_observations(Nobs_per_channel, args.uncertainty,\
                 sample_from_kde=args.sample_from_kde, sensitivity=args.sensitivity, \
-                psd_path=args.psd_path, multiproc=args.multiproc)
+                psd_path=args.psd_path, multiproc=args.multiproc, verbose=verbose)
             obsdata = model0[channel].measurement_uncertainty(args.Nsamps, \
-                args.uncertainty, observation_noise=True)
+                args.uncertainty, observation_noise=True, verbose=verbose)
         else:
             observations = np.concatenate((observations, \
                 model0[channel].generate_observations(Nobs_per_channel, args.uncertainty, \
                 sample_from_kde=args.sample_from_kde, sensitivity=args.sensitivity, \
-psd_path=args.psd_path, multiproc=args.multiproc)))
+psd_path=args.psd_path, multiproc=args.multiproc, verbose=verbose)))
             obsdata = np.concatenate((obsdata, \
                 model0[channel].measurement_uncertainty(args.Nsamps, \
-                args.uncertainty, observation_noise=True)))
+                args.uncertainty, observation_noise=True, verbose=verbose)))
 
 
 # Plot the KDEs and observations
 if make_plots==True:
-    print("Plotting marginalized KDE models...")
+    if verbose==True:
+        print("\nPlotting marginalized KDE models...")
     if len(args.model0.split('/'))>1:
         fixed_vals = [args.model0.split('/')[-1]]
     else:
         fixed_vals = ['alpha10']
     msplot.plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, \
            model0, name=args.name, fixed_vals=fixed_vals, plot_obs=True, plot_obs_samples=False)
-    print("")
+    if verbose:
+        print("")
 
 
 # --- Freeze sample evaluations in each model. 

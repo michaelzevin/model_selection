@@ -27,7 +27,8 @@ _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
 _maxsamps = int(1e5)
-_kde_bandwidth = 0.005
+_kde_bandwidth_unnormalized = 0.005
+_kde_bandwidth_normalized = 0.0005
 
 """
 Set of classes used to construct statistical models of populations.
@@ -48,8 +49,8 @@ class KDEModel(Model):
     def from_samples(label, samples, params, sensitivity=None, normalize=False, **kwargs):
         """
         Generate a KDE model instance from `samples`, where `params` are \
-        series in the `samples` dataframe. Additional *kwargs* are passed to \
-        nothing at the moment. If `weight` is a column in your population \
+        series in the `samples` dataframe. Additional *kwargs* can be passed \
+        specifying KDE bandwidth. If `weight` is a column in your population \
         model, will assume this is the cosmological weight of each sample, and \
         will include this in the construction of all your KDEs. If `sensitivity` \
         is provided, samples used to generate the detection-weighted KDE will be \
@@ -91,12 +92,21 @@ class KDEModel(Model):
         kde_samples = samples[params]
 
         # get optimal SNRs for this sensitivity
-        optimal_snrs = np.asarray(samples['snropt_'+sensitivity])
+        if sensitivity is not None:
+            optimal_snrs = np.asarray(samples['snropt_'+sensitivity])
+        else:
+            optimal_snrs = np.nan*np.ones(len(samples))
 
-        return KDEModel(label, kde_samples, params, cosmo_weights, sensitivity, pdets, optimal_snrs, detectable_convfac, normalize=normalize)
+        # get KDE bandwidth, if specified in kwargs
+        if normalize==True:
+            bandwidth = kwargs['bandwidth'] if 'bandwidth' in kwargs.keys() else _kde_bandwidth_normalized
+        elif normalize==False:
+            bandwidth = kwargs['bandwidth'] if 'bandwidth' in kwargs.keys() else _kde_bandwidth_unnormalized
+
+        return KDEModel(label, kde_samples, params, bandwidth, cosmo_weights, sensitivity, pdets, optimal_snrs, detectable_convfac, normalize=normalize)
 
 
-    def __init__(self, label, samples, params, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, detectable_convfac=1, normalize=False):
+    def __init__(self, label, samples, params, bandwidth, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, detectable_convfac=1, normalize=False):
         super()
         self.label = label
         self.samples = samples
@@ -105,6 +115,7 @@ class KDEModel(Model):
         self.sensitivity = sensitivity
         self.pdets = pdets
         self.optimal_snrs = optimal_snrs
+        self.bandwidth = bandwidth
         self.detectable_convfac = detectable_convfac
         self.normalize = normalize
 
@@ -143,7 +154,7 @@ class KDEModel(Model):
         # Get the KDE objects, specify function for pdf
         # This custom KDE handles multiple dimensions, bounds, and weights
         # and takes in samples (Ndim x Nsamps)
-        kde = Bounded_Nd_kde(samples.T, weights=combined_weights, bw_method=_kde_bandwidth, bounds=self.param_bounds)
+        kde = Bounded_Nd_kde(samples.T, weights=combined_weights, bw_method=bandwidth, bounds=self.param_bounds)
         self.kde = kde
 
         if self.normalize==True:
@@ -202,7 +213,6 @@ class KDEModel(Model):
             for idx, (d,dp) in tqdm(enumerate(zip(data,dpdf)), total=len(data)):
                 d = d.reshape((1, d.shape[0], d.shape[1]))
                 dp = [dp]
-                p = multiprocessing.Process(target=self, args=(d,dp,idx,return_dict,))
                 processes.append(p)
                 p.start()
             for process in processes:
@@ -240,7 +250,7 @@ class KDEModel(Model):
             return_dict[proc_idx] = prob
         return prob
 
-    def marginalize(self, params):
+    def marginalize(self, params, bandwidth):
         """
         Generate a new, lower dimensional, KDEModel from the parameters in [params]
         """
@@ -249,13 +259,15 @@ class KDEModel(Model):
             label += '_'+p
         label += '_marginal'
 
-        return KDEModel(label, self.samples[params], params, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, self.detectable_convfac, self.normalize)
+        return KDEModel(label, self.samples[params], params, bandwidth, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, self.detectable_convfac, self.normalize)
 
 
-    def generate_observations(self, Nobs, uncertainty, sample_from_kde=False, sensitivity='design_network', psd_path=None, multiproc=True):
+    def generate_observations(self, Nobs, uncertainty, sample_from_kde=False, sensitivity='design_network', psd_path=None, multiproc=True, verbose=False):
         """
         Generates samples from KDE model. This will generated Nobs samples, storing the attribute 'self.observations' with dimensions [Nobs x Nparam]. 
         """
+        if verbose:
+            print("   drawing {} observations from channel {}...".format(Nobs, self.label))
 
         ### If sample_from_KDE is specified... ###
         # draw samples from the detection-weighted KDE, which is quicker,
@@ -302,10 +314,12 @@ class KDEModel(Model):
         return observations
 
 
-    def measurement_uncertainty(self, Nsamps, method='delta', observation_noise=False):
+    def measurement_uncertainty(self, Nsamps, method='delta', observation_noise=False, verbose=False):
         """
         Mocks up measurement uncertainty from observations using specified method
         """
+        if verbose:
+            print("   mocking up observation uncertainties for the {} channel using the '{}' method...".format(self.label, method))
 
         params = self.params
 
@@ -319,7 +333,7 @@ class KDEModel(Model):
         
         # for 'gwevents', assume snr-independent measurement uncertainty based on the typical values for events in the catalog
         if method == "gwevents":
-            for idx, obs in enumerate(self.observations):
+            for idx, obs in tqdm(enumerate(self.observations), total=len(self.observations)):
                 for pidx in np.arange(self.observations.shape[-1]):
                     mu = obs[pidx]
                     sigma = [_posterior_sigmas[param] for param in self.samples.columns][pidx]
@@ -349,9 +363,8 @@ class KDEModel(Model):
         if method == "snr":
 
             # to use SNR-dependent uncertainty, we need to make sure that the correct parameters are supplied
-            # FIXME
 
-            for idx, (obs,snr,Theta) in enumerate(zip(self.observations, self.snrs, self.Thetas)):
+            for idx, (obs,snr,Theta) in tqdm(enumerate(zip(self.observations, self.snrs, self.Thetas)), total=len(self.observations)):
                 # convert to mchirp, q
                 if set(['mchirp','q']).issubset(set(params)):
                     mc_true = obs[params.index('mchirp')]
@@ -399,7 +412,6 @@ class KDEModel(Model):
                 # get source-frame chirp mass and other mass parameters
                 mc_samps = mcdet_samps / (1+z_samps)
                 q_samps = eta_to_q(eta_samps)
-                m1_samps, m2_samps = mchirpq_to_m1m2(mc_samps,q_samps)
                 m1_samps, m2_samps = mchirpq_to_m1m2(mc_samps,q_samps)
                 mtot_samps = (m1_samps + m2_samps)
 
@@ -450,7 +462,6 @@ def scale_to_unity(bounds):
     Provides scale factor to renormalize pdf evaluation on the original 
     bounds of the data
     """
-    # FIXME: is this needed?
     ranges = [b[1]-b[0] for b in bounds]
     scale_factor = np.product(ranges)
     return scale_factor
