@@ -25,9 +25,7 @@ plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
 "chieff": r"$\chi_{\rm eff}$", "z": r"$z$"}
-_Nsamps = 10000
-_marg_bandwidth_normalized_dict = {"mchirp": 0.0001, "q": 0.01, "chieff": 0.005, "z": 0.005}
-_marg_bandwidth_unnormalized_dict = {"mchirp": 0.01, "q": 0.01, "chieff": 0.01, "z": 0.01}
+_Nsamps = 100000
 
 # --- Useful functions for accessing items in dictionary
 def getFromDict(dataDict, mapList):
@@ -79,8 +77,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                     ax = axs[idx,pidx]
 
                 # marginalize the kde (this redoes the KDE in 1D)
-                bw = _marg_bandwidth_normalized_dict[param] if kde.normalize==True else _marg_bandwidth_unnormalized_dict[param]
-                marg_kde = kde.marginalize([param], bandwidth=bw)
+                marg_kde = kde.marginalize([param])
 
                 # evaluate the marginalized kde over the param range
                 eval_pts = np.linspace(*_param_bounds[param], 100)

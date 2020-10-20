@@ -27,8 +27,7 @@ _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
 _maxsamps = int(1e5)
-_kde_bandwidth_unnormalized = 0.005
-_kde_bandwidth_normalized = 0.0005
+_kde_bandwidth = 0.01
 
 """
 Set of classes used to construct statistical models of populations.
@@ -98,24 +97,21 @@ class KDEModel(Model):
             optimal_snrs = np.nan*np.ones(len(samples))
 
         # get KDE bandwidth, if specified in kwargs
-        if normalize==True:
-            bandwidth = kwargs['bandwidth'] if 'bandwidth' in kwargs.keys() else _kde_bandwidth_normalized
-        elif normalize==False:
-            bandwidth = kwargs['bandwidth'] if 'bandwidth' in kwargs.keys() else _kde_bandwidth_unnormalized
+        bandwidth = kwargs['bandwidth'] if 'bandwidth' in kwargs.keys() else _kde_bandwidth
 
         return KDEModel(label, kde_samples, params, bandwidth, cosmo_weights, sensitivity, pdets, optimal_snrs, detectable_convfac, normalize=normalize)
 
 
-    def __init__(self, label, samples, params, bandwidth, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, detectable_convfac=1, normalize=False):
+    def __init__(self, label, samples, params, bandwidth=_kde_bandwidth, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, detectable_convfac=1, normalize=False):
         super()
         self.label = label
         self.samples = samples
         self.params = params
+        self.bandwidth = bandwidth
         self.cosmo_weights = cosmo_weights
         self.sensitivity = sensitivity
         self.pdets = pdets
         self.optimal_snrs = optimal_snrs
-        self.bandwidth = bandwidth
         self.detectable_convfac = detectable_convfac
         self.normalize = normalize
 
@@ -154,13 +150,15 @@ class KDEModel(Model):
         # Get the KDE objects, specify function for pdf
         # This custom KDE handles multiple dimensions, bounds, and weights
         # and takes in samples (Ndim x Nsamps)
-        kde = Bounded_Nd_kde(samples.T, weights=combined_weights, bw_method=bandwidth, bounds=self.param_bounds)
-        self.kde = kde
+        # FIXME: shouldn't the bounds be changed here if normalized???
 
         if self.normalize==True:
+            kde = Bounded_Nd_kde(samples.T, weights=combined_weights, bw_method=bandwidth, bounds=[(0,1)]*len(self.params))
             self.pdf = lambda x: kde(normalize_samples(x, self.param_bounds).T) / pdf_scale
         else:
+            kde = Bounded_Nd_kde(samples.T, weights=combined_weights, bw_method=bandwidth, bounds=self.param_bounds)
             self.pdf =  lambda x: kde(x.T)
+        self.kde = kde
 
         self.cached_values = None
 
@@ -250,7 +248,7 @@ class KDEModel(Model):
             return_dict[proc_idx] = prob
         return prob
 
-    def marginalize(self, params, bandwidth):
+    def marginalize(self, params, bandwidth=_kde_bandwidth):
         """
         Generate a new, lower dimensional, KDEModel from the parameters in [params]
         """
