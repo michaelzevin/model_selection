@@ -27,7 +27,7 @@ _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
 _maxsamps = int(1e5)
-_kde_bandwidth = 0.005
+_kde_bandwidth = 0.01
 
 """
 Set of classes used to construct statistical models of populations.
@@ -288,23 +288,38 @@ class KDEModel(Model):
         Thetas = np.zeros(Nobs)
 
         # find indices for systems that can potentially be detected
-        could_be_detected = list(np.where(self.pdets > 0)[0])
         # loop until we have enough systems with SNRs greater than the SNR threshold
+        recovered_idxs = []
         for idx in tqdm(np.arange(Nobs), total=Nobs):
             detected = False
             while detected==False:
-                sys_idx = int(np.random.choice(could_be_detected, size=1))
+                sys_idx = np.random.choice(np.arange(len(self.pdets)), p=(self.cosmo_weights/np.sum(self.cosmo_weights)))
+                pdet = self.pdets[sys_idx]
                 snr_opt = self.optimal_snrs[sys_idx]
                 Theta = projection_factor(det, *sample_extrinsic())
 
                 # if the SNR is greater than the threshold, the system is "observed"
                 if snr_opt*Theta >= self.snr_thresh:
+                    if sys_idx in recovered_idxs:
+                        continue
                     detected = True
                     observations[idx,:] = np.asarray(self.samples.iloc[sys_idx])
                     snrs[idx] = snr_opt*Theta
                     Thetas[idx] = Theta
-                    # remove this system from the potentially detectable systems
-                    could_be_detected.remove(sys_idx)
+                    recovered_idxs.append(sys_idx)
+
+        """for idx in tqdm(np.arange(Nobs), total=Nobs):
+            detected = False
+            while detected==False:
+                sys_idx = np.random.choice(np.arange(len(self.pdets)), p=(self.cosmo_weights/np.sum(self.cosmo_weights)))
+                pdet = self.pdets[sys_idx]
+                snr_opt = self.optimal_snrs[sys_idx]
+                randvar = np.random.random()
+                if randvar < pdet:
+                    detected = True
+                    observations[idx,:] = np.asarray(self.samples.iloc[sys_idx])
+                    snrs[idx] = snr_opt/2.26
+                    Thetas[idx] = 1./2.26"""
                     
         self.observations = observations
         self.snrs = snrs
