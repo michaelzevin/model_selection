@@ -27,7 +27,7 @@ _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
 _maxsamps = int(1e5)
-_kde_bandwidth = 0.01
+_kde_bandwidth = 0.005
 
 """
 Set of classes used to construct statistical models of populations.

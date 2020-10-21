@@ -26,6 +26,7 @@ _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
 "chieff": r"$\chi_{\rm eff}$", "z": r"$z$"}
 _Nsamps = 100000
+_marg_kde_bandwidth = 0.01
 
 # --- Useful functions for accessing items in dictionary
 def getFromDict(dataDict, mapList):
@@ -77,7 +78,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                     ax = axs[idx,pidx]
 
                 # marginalize the kde (this redoes the KDE in 1D)
-                marg_kde = kde.marginalize([param])
+                marg_kde = kde.marginalize([param], bandwidth=_marg_kde_bandwidth)
 
                 # evaluate the marginalized kde over the param range
                 eval_pts = np.linspace(*_param_bounds[param], 100)
@@ -141,7 +142,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
             # construct combined KDE model and plot
             if model0:
                 combined_samples = pd.DataFrame(model0_samples[:,pidx].flatten(), columns=[param])
-                combined_kde = KDEModel.from_samples('combined_kde', combined_samples, [param], weighting=None)
+                combined_kde = KDEModel.from_samples('combined_kde', combined_samples, [param], weighting=None, bandwidth=_marg_kde_bandwidth)
                 eval_pts = np.linspace(*_param_bounds[param], 100)
                 eval_pts = eval_pts.reshape(100,1,1)
                 pdf = combined_kde(eval_pts)
