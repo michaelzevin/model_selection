@@ -308,19 +308,6 @@ class KDEModel(Model):
                     Thetas[idx] = Theta
                     recovered_idxs.append(sys_idx)
 
-        """for idx in tqdm(np.arange(Nobs), total=Nobs):
-            detected = False
-            while detected==False:
-                sys_idx = np.random.choice(np.arange(len(self.pdets)), p=(self.cosmo_weights/np.sum(self.cosmo_weights)))
-                pdet = self.pdets[sys_idx]
-                snr_opt = self.optimal_snrs[sys_idx]
-                randvar = np.random.random()
-                if randvar < pdet:
-                    detected = True
-                    observations[idx,:] = np.asarray(self.samples.iloc[sys_idx])
-                    snrs[idx] = snr_opt/2.26
-                    Thetas[idx] = 1./2.26"""
-                    
         self.observations = observations
         self.snrs = snrs
         self.Thetas = Thetas
