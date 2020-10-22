@@ -13,7 +13,7 @@ import numpy as np
 import scipy as sp
 import pandas as pd
 from scipy.stats import norm, truncnorm
-from .utils.selection_effects import sample_extrinsic, projection_factor, get_detector, _PSD_defaults
+from .utils.selection_effects import projection_factor_Dominik2015_interp, _PSD_defaults
 from .utils.bounded_Nd_kde import Bounded_Nd_kde
 from .utils.transform import mchirpq_to_m1m2, mtotq_to_m1m2, mtoteta_to_m1m2, chieff_to_s1s2, mtotq_to_mc, mtoteta_to_mchirpq, eta_to_q
 
@@ -28,6 +28,10 @@ _posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.046
 _snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
 _maxsamps = int(1e5)
 _kde_bandwidth = 0.01
+
+# Get the interpolation function for the projection factor in Dominik+2015
+# which takes in a random number and spits out a projection factor 'w'
+projection_factor_interp = projection_factor_Dominik2015_interp()
 
 """
 Set of classes used to construct statistical models of populations.
@@ -280,8 +284,6 @@ class KDEModel(Model):
 
         ### Otherwise, draw samples from the population used to construct the KDEs ###
         self.snr_thresh = _PSD_defaults['snr_network'] if 'network' in sensitivity else _PSD_defaults['snr_single']
-        # get the detectors antenna pattern for response function (FIXME: will this work for a network?)
-        det = get_detector("H1")
 
         # allocate empty arrays
         observations = np.zeros((Nobs, self.samples.shape[-1]))
@@ -297,7 +299,7 @@ class KDEModel(Model):
                 sys_idx = np.random.choice(np.arange(len(self.pdets)), p=(self.cosmo_weights/np.sum(self.cosmo_weights)))
                 pdet = self.pdets[sys_idx]
                 snr_opt = self.optimal_snrs[sys_idx]
-                Theta = projection_factor(det, *sample_extrinsic())
+                Theta = float(projection_factor_interp(np.random.random()))
 
                 # if the SNR is greater than the threshold, the system is "observed"
                 if snr_opt*Theta >= self.snr_thresh:
