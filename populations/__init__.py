@@ -211,6 +211,7 @@ class KDEModel(Model):
             for idx, (d,dp) in tqdm(enumerate(zip(data,dpdf)), total=len(data)):
                 d = d.reshape((1, d.shape[0], d.shape[1]))
                 dp = [dp]
+                p = multiprocessing.Process(target=self, args=(d,dp,idx,return_dict,))
                 processes.append(p)
                 p.start()
             for process in processes:

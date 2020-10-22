@@ -254,7 +254,7 @@ else:
             observations = np.concatenate((observations, \
                 model0[channel].generate_observations(Nobs_per_channel, args.uncertainty, \
                 sample_from_kde=args.sample_from_kde, sensitivity=args.sensitivity, \
-psd_path=args.psd_path, multiproc=args.multiproc, verbose=verbose)))
+                psd_path=args.psd_path, multiproc=args.multiproc, verbose=verbose)))
             obsdata = np.concatenate((obsdata, \
                 model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True, verbose=verbose)))
