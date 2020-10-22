@@ -56,7 +56,7 @@ gwtc_transforms = {'mchirp': _gwtc_to_mchirp, 'q': _gwtc_to_q, \
                    'chieff': _gwtc_to_chieff, 'z': _gwtc_to_redshift}
 
 
-def generate_observations(params, gwpath, Nsamps, mesaurement_uncertainty=None):
+def generate_observations(params, gwpath, Nsamps, mesaurement_uncertainty='delta'):
 
     if _events_to_use:
         gw_names = _events_to_use
@@ -83,7 +83,7 @@ def generate_observations(params, gwpath, Nsamps, mesaurement_uncertainty=None):
 
     # Set up samples for the specified smearing, as well as observations
     observations = np.zeros((len(gw_files), len(params)))
-    if not mesaurement_uncertainty:
+    if mesaurement_uncertainty=='delta':
         samples_shape = (len(gw_files), 1, len(params))
         samples=np.zeros(samples_shape)
     elif mesaurement_uncertainty in ['gaussian', 'posteriors']:
@@ -115,7 +115,7 @@ no transformations exist to generate it from the GW data!".format(p))
             observations[idx, pidx] = np.median(df[p])
 
         # delta function observations
-        if not mesaurement_uncertainty:
+        if mesaurement_uncertainty == 'delta':
             for pidx, p in enumerate(params):
                 samples[idx, :, pidx] = np.median(df[p])
         # gaussian smearing

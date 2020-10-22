@@ -35,7 +35,7 @@ argp.add_argument("-p", "--params", nargs="+", default="mchirp", help="Specifies
 argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations to be taken from the mixture model. Must be set if gwobs not used. Default=None.")
 argp.add_argument("-N", "--Nsamps", type=int, default=100, help="Number of samples to be drawn from the posterior distributions and used to construct the KDE models. Default=100.")
 argp.add_argument("--sensitivity", type=str, help="Name of desired interferometer sensitivity. Should be consistent with the string following the `pdet` and `snropt` columns in the population dataframes. This is used to construct a detection-weighted kde, as well as for drawing samples from the underlying distributions. By default, these weights have the same name as the network sensitivity from the LVC Observing Scenarios, and have '_network' appended if using a 3-detector configuration. Default=None.")
-argp.add_argument("--uncertainty", type=str, help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posteriors'), or from a mock gaussian with the mean and sigma of observations ('gaussian'). For mock observations, you can choose to smear according to the average spread in parameters from current GW observations ('gwevents'), or use a gaussian with an SNR-dependent sigma ('snr'). Default=None.")
+argp.add_argument("--uncertainty", type=str, default="delta", help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posteriors'), or from a mock gaussian with the mean and sigma of observations ('gaussian'). For mock observations, you can choose to smear according to the average spread in parameters from current GW observations ('gwevents'), or use a gaussian with an SNR-dependent sigma ('snr'). The agrument 'delta' can also be supplied for both mock observations and GW observations, in which a single sample is taken at the true value (mock observations) or median value (gwobs) of the observation. Default='delta'.")
 argp.add_argument("--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the spin magnitude is not specified. Default is None.")
 argp.add_argument("--normalize-kde", action="store_true", help="If True, will normalize KDE to unit cube. Default is False.")
 argp.add_argument("--sample-from-kde", action="store_true", help="If True, events are drawn probabalistically from the detection-weighted KDE. Otherwise, samples drawn from the actual population models, weighted by pdet. These *should* result in similar results (modulo sampling uncertainty). Default is False.")
@@ -156,13 +156,18 @@ if not gwobs and not args.Nobs:
 
 # check that valid measurement uncertainty is specified
 if gwobs:
-    valid_uncertainties = ["gaussian", "posteriors"]
+    valid_uncertainties = ["delta", "gaussian", "posteriors"]
     if args.uncertainty not in valid_uncertainties:
         raise ValueError("Unspecified measurement uncertainty procedure when using GW observations: '{0:s}' (valid uncertainties: {1:s})".format(args.uncertainty, ', '.join(valid_uncertainties)))
 else:
-    valid_uncertainties = ["gwevents", "snr"]
+    valid_uncertainties = ["delta", "gwevents", "snr"]
     if args.uncertainty not in valid_uncertainties:
         raise ValueError("Unspecified measurement uncertainty procedure when using mock observations: '{0:s}' (valid uncertainties: {1:s})".format(args.uncertainty, ', '.join(valid_uncertainties)))
+
+# If 'delta' measurement uncertainty is specified and >1 Nsamps give, spit out warning
+if args.uncertainty=='delta' and args.Nsamps>1:
+    warnings.warn("You specified delta-function observations but asked for more than one sample, only one sample will be used for each observations!\n")
+
 
 
 # --- If model0 specified, store KDE models in `model0` dict and save relative fractions
@@ -240,7 +245,7 @@ else:
             # first check that the branching fractions * Nobs are integers
             if not (args.Nobs*model0[channel].rel_frac).is_integer():
                 if args.detectable_beta==True:
-                    warnings.warn("Number of observations is not divisble by detectable branching fractions provided, this may result in drawing a number of samples slighty different than what was specified!")
+                    warnings.warn("Number of observations is not divisble by detectable branching fractions provided, this may result in drawing a number of samples slighty different than what was specified!\n")
             Nobs_per_channel = int(np.round(args.Nobs * model0[channel].rel_frac))
         # add attribute for number of observations drawn
         model0[channel].Nobs_from_beta(Nobs_per_channel)
