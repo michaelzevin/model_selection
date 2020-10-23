@@ -196,7 +196,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
 
 
 
-def plot_samples(samples, submodels_dict, model_names, channels, model0, name=None, hyper_idx=0):
+def plot_samples(samples, submodels_dict, model_names, channels, model0, name=None, hyper_idx=0, detectable_beta=False):
     """
     Plots the models that the chains are exploring, and histograms of the 
     branching fraction recovered for each model.
@@ -249,10 +249,16 @@ def plot_samples(samples, submodels_dict, model_names, channels, model0, name=No
 
         # plot the injected value
         if model0:
-            ax_chain.axhline(model0[channel].rel_frac, color='k', \
-                    linestyle='--', alpha=0.7)
-            ax_marg.axhline(model0[channel].rel_frac, color='k', \
-                    linestyle='--', alpha=0.7)
+            if detectable_beta==True:
+                ax_chain.axhline(model0[channel].rel_frac, color='k', \
+                        linestyle='--', alpha=0.7)
+                ax_marg.axhline(model0[channel].rel_frac, color='k', \
+                        linestyle='--', alpha=0.7)
+            if detectable_beta==False:
+                ax_chain.axhline(model0[channel].underlying_frac, color='k', \
+                        linestyle='--', alpha=0.7)
+                ax_marg.axhline(model0[channel].underlying_frac, color='k', \
+                        linestyle='--', alpha=0.7)
 
         # tick labels
         if cidx != len(channels)-1:
@@ -290,10 +296,14 @@ def plot_samples(samples, submodels_dict, model_names, channels, model0, name=No
     else:
         model0_name='GW observations'
     plt.suptitle("True model: {0:s}".format(model0_name), fontsize=40)
+    if detectable_beta==True:
+        fname = 'samples_detectable'
+    elif detectable_beta==False:
+        fname = 'samples_underlying'
     if name:
-        fname = 'samples_hyperidx'+str(hyper_idx)+'_'+name+'.png'
+        fname = fname+'_hyperidx'+str(hyper_idx)+'_'+name+'.png'
     else:
-        fname = 'samples_hyperidx'+str(hyper_idx)+'.png'
+        fname = fname+'_hyperidx'+str(hyper_idx)+'.png'
     plt.subplots_adjust(bottom=0.15)
     plt.savefig(fname)
     plt.close()
