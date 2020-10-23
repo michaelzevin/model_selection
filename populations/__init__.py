@@ -441,7 +441,6 @@ class KDEModel(Model):
                     elif param=='z':
                         obsdata[idx, :, pidx] = z_samps
 
-        from IPython import embed; embed()
         return obsdata
 
 
