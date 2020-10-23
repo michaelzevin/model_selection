@@ -24,10 +24,10 @@ cosmo = cosmology.Planck15
 
 # Need to ensure all parameters are normalized over the same range
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
-_posterior_sigmas = {"mchirp": 1.1731, "q": 0.1837, "chieff": 0.1043, "z": 0.0463}
-_snrscale_sigmas = {"mchirp": 0.08, "eta": 0.022, "chieff": 0.14, "Theta": 0.21}
+_posterior_sigmas = {"mchirp": 1.512, "q": 0.166, "chieff": 0.1043, "z": 0.0463}
+_snrscale_sigmas = {"mchirp": 0.04, "eta": 0.03, "chieff": 0.14}
 _maxsamps = int(1e5)
-_kde_bandwidth = 0.01
+_kde_bandwidth = 0.005
 
 # Get the interpolation function for the projection factor in Dominik+2015
 # which takes in a random number and spits out a projection factor 'w'
@@ -362,7 +362,7 @@ class KDEModel(Model):
                     obsdata[idx, :, pidx] = samps
 
 
-        # for 'snr', use SNR-dependent measurement uncertainty following procedures from Fishbach et al. 2018
+        # for 'snr', use SNR-dependent measurement uncertainty following procedures from Fishbach, Holz, & Farr 2018 (2018ApJ...863L..41F)
         if method == "snr":
 
             # to use SNR-dependent uncertainty, we need to make sure that the correct parameters are supplied
@@ -377,6 +377,8 @@ class KDEModel(Model):
                     q_true = obs[params.index('q')]
                 elif set(['mtot','eta']).issubset(set(params)):
                     mc_true, q_true = mtoteta_to_mchirpq(obs[params].index('mtot'), obs[params].index('q'))
+                else:
+                    raise ValueError("You need to have a mass and mass ratio parameter to to SNR-weighted uncertainty!")
 
                 z_true = obs[params.index('z')]
                 mcdet_true = mc_true*(1+z_true)
@@ -439,6 +441,7 @@ class KDEModel(Model):
                     elif param=='z':
                         obsdata[idx, :, pidx] = z_samps
 
+        from IPython import embed; embed()
         return obsdata
 
 
