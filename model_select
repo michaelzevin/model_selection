@@ -334,17 +334,50 @@ for hyper_idx in list(submodels_dict.keys()):
     samples[:,:,hyper_idx] = np.floor(samples[:,:,hyper_idx]).astype(int)
 
 
+# Reshape to have all steps from all walkers in a single dimension
+original_shape = samples.shape
+samples = samples.reshape((samples.shape[0] * samples.shape[1], samples.shape[2]))
+lnprb = lnprb.reshape((lnprb.shape[0] * lnprb.shape[1]))
+
+
+# Get samples for both *detectable* branching fractions and *underlying* branching fractions
+if verbose:
+    print("Converting detectable betas from sampler to underlying betas...\n")
+underlying_samples = samples.copy()
+smdls = list(set([x.split('/',1)[1] for x in model_names]))
+# get the conversion factors between the detectable and underlying distributions
+for smdl in sorted(smdls):
+    detectable_convfacs = []
+    for channel in channels:
+        detectable_convfacs.append(getFromDict(kde_models, [channel]+smdl.split('/')).detectable_convfac)
+    detectable_convfacs = np.asarray(detectable_convfacs)
+    # loop over hyperparams to get samples in this submodel
+    hyperparams = smdl.split('/')
+    for idx, param in enumerate(hyperparams):
+        hyper_idx = list(submodels_dict[idx].keys())[list(submodels_dict[idx].values()).index(param)]
+        if idx==0:
+            matching_idxs = np.where(samples[:,idx] == hyper_idx)[0]
+            matching_samps = samples[matching_idxs]
+        else:
+            matching_idxs = matching_idxs[np.where(matching_samps[:,idx] == hyper_idx)[0]]
+            matching_samps = samples[matching_idxs]
+    # if no sample are in this model, continue
+    if len(matching_idxs)==0:
+        continue
+    # convert hyperparams of these samples accordingly to get the underlying betas
+    converted_betas = underlying_samples[matching_idxs,len(hyperparams):] / detectable_convfacs
+    converted_betas /= converted_betas.sum(axis=1, keepdims=True)
+    underlying_samples[matching_idxs,len(hyperparams):] = converted_betas
+
+
 # Plot samples and histograms of betas per model
 if make_plots==True:
-    print("Plotting samples...\n")
+    if verbose:
+        print("Plotting samples...\n")
     for hyper_idx in list(submodels_dict.keys()):
-        msplot.plot_samples(samples, submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx)
-
-
-# reshape to have all steps from all walkers in a single dimension
-samples = samples.reshape((samples.shape[0] * samples.shape[1], \
-                                samples.shape[2]))
-lnprb = lnprb.reshape((lnprb.shape[0] * lnprb.shape[1]))
+        # Need samples back in their original shape (separated by chains)
+        msplot.plot_samples(samples.reshape(original_shape), submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx, detectable_beta=True)
+        msplot.plot_samples(underlying_samples.reshape(original_shape), submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx, detectable_beta=False)
 
 
 # --- Print summary info about the sampling
@@ -360,27 +393,38 @@ if verbose:
             hyper_idx = list(submodels_dict[idx].keys())[list(submodels_dict[idx].values()).index(param)]
             if idx==0:
                 matching_samps = samples[samples[:,idx] == hyper_idx]
+                matching_samps_underlying = underlying_samples[underlying_samples[:,idx] == hyper_idx]
             else:
                 matching_samps = matching_samps[matching_samps[:,idx] == hyper_idx]
+                matching_samps_underlying = matching_samps_underlying[matching_samps_underlying[:,idx] == hyper_idx]
         # get counts in this model
         counts = matching_samps.shape[0]
         recovered_vals[smdl]['counts'] = counts
         # get betas for this model from each channel
         recovered_vals[smdl]['betas'] = {}
+        recovered_vals[smdl]['betas_underlying'] = {}
         for cidx, channel in enumerate(channels):
             # append beta values for this model
             if counts > 0:
                 beta = matching_samps[:,Nhyper+cidx]
-                beta = round(np.mean(beta), 2)
+                beta = round(np.mean(beta), 3)
+                beta_underlying = matching_samps_underlying[:,Nhyper+cidx]
+                beta_underlying = round(np.mean(beta_underlying), 3)
             else:
                 beta = np.nan
+                beta_underlying = np.nan
             recovered_vals[smdl]['betas'][channel] = beta
+            recovered_vals[smdl]['betas_underlying'][channel] = beta_underlying
 
     # print everything
     for smdl in sorted(smdls):
         sample_counts = recovered_vals[smdl]['counts']
         sample_betas = recovered_vals[smdl]['betas']
-        print("  Model {0:s}: {1:d} samples, betas={2}".format(smdl, sample_counts, list(sample_betas.items())))
+        sample_betas_underlying = recovered_vals[smdl]['betas_underlying']
+        print("  Model {0:s}".format(smdl))
+        print("     {0:d} samples".format(sample_counts))
+        print("     underlying betas={0}".format(list(sample_betas_underlying.items())))
+        print("     detectable betas={0}".format(list(sample_betas.items())))
     print("")
 
 
@@ -438,3 +482,15 @@ if args.save_samples:
         columns.append('beta_'+channel)
     df = pd.DataFrame(samples, columns=columns).astype(convert_dict)
     df.to_hdf(fname, key='model_selection/samples')
+
+    # save underlying samples as dataframe
+    columns = []
+    convert_dict = {}
+    for hyper_idx in submodels_dict.keys():
+        columns.append('p'+str(hyper_idx))
+        # save column names to convert model indices to ints
+        convert_dict['p'+str(hyper_idx)] = int
+    for channel in channels:
+        columns.append('beta_'+channel)
+    df = pd.DataFrame(underlying_samples, columns=columns).astype(convert_dict)
+    df.to_hdf(fname, key='model_selection/underlying_samples')
