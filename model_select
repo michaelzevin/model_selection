@@ -84,9 +84,9 @@ if not gwobs:
     # perform some checks
     if (len(betas) != len(channels)) and (len(betas) != len(channels)-1):
         raise ValueError("Must specify {0:d} or {1:d} branching fractions, you provided {2:d}!".format(len(channels)-1, len(channels), len(betas)))
-    if np.sum(betas) > 1.0:
+    if np.round(np.sum(betas), 5) > 1.0:
         raise ValueError("Branching fractions must sum to less than or equal to 1.0, yours sum to {0:0.2f}!".format(np.sum(betas)))
-    if (len(betas) == len(channels)) and (np.sum(betas) != 1.0):
+    if (len(betas) == len(channels)) and (np.round(np.sum(betas), 5) != 1.0):
         raise ValueError("If you provide the same number of branching fractions as channels, they must sum to exactly 1.0 (yours sum to {0:0.2f})!".format(np.sum(betas)))
     # synthesize last beta
     if len(betas) == len(channels)-1:
