@@ -27,7 +27,7 @@ _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _posterior_sigmas = {"mchirp": 1.512, "q": 0.166, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.04, "eta": 0.03, "chieff": 0.14}
 _maxsamps = int(1e5)
-_kde_bandwidth = 0.005
+_kde_bandwidth = 0.01
 
 # Get the interpolation function for the projection factor in Dominik+2015
 # which takes in a random number and spits out a projection factor 'w'
@@ -406,6 +406,7 @@ class KDEModel(Model):
                 eta_samps = truncnorm.rvs(a=(0-eta_obs)/eta_sigma, b=(0.25-eta_obs)/eta_sigma, loc=eta_obs, scale=eta_sigma, size=Nsamps)
 
                 # get samples for projection factor (use the true value as the observed value)
+                # Note that our Theta is the projection factor (between 0 and 1), rather than the Theta from Finn & Chernoff 1993
                 snr_opt = snr/Theta
                 Theta_sigma = 0.3 / (1.0 + snr_opt/self.snr_thresh)
                 Theta_samps = truncnorm.rvs(a=(0-Theta)/Theta_sigma, b=(1-Theta)/Theta_sigma, loc=Theta, scale=Theta_sigma, size=Nsamps)
