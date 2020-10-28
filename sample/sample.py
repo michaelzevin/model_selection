@@ -114,7 +114,7 @@ posteriors!".format(self.posterior_name))
         sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, args=posterior_args)
         for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)):
             if verbose:
-                if (idx+1) % 50 == 0:
+                if (idx+1) % (self.nsteps/200) == 0:
                     sys.stderr.write("\r  {0}% (N={1})".\
                                 format(float(idx+1)*100. / self.nsteps, idx+1))
         if verbose:

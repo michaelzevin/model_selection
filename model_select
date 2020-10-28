@@ -326,6 +326,7 @@ while all_models_at_deepest==False:
 sampler = sample.Sampler(model_names)
 sampler.sample(kde_models, obsdata, verbose=verbose)
 samples = sampler.samples
+raw_samples = samples.copy()
 lnprb = sampler.lnprb
 submodels_dict = sampler.submodels_dict
 
@@ -337,6 +338,7 @@ for hyper_idx in list(submodels_dict.keys()):
 # Reshape to have all steps from all walkers in a single dimension
 original_shape = samples.shape
 samples = samples.reshape((samples.shape[0] * samples.shape[1], samples.shape[2]))
+raw_samples = raw_samples.reshape((raw_samples.shape[0] * raw_samples.shape[1], raw_samples.shape[2]))
 lnprb = lnprb.reshape((lnprb.shape[0] * lnprb.shape[1]))
 
 
@@ -482,6 +484,9 @@ if args.save_samples:
         columns.append('beta_'+channel)
     df = pd.DataFrame(samples, columns=columns).astype(convert_dict)
     df.to_hdf(fname, key='model_selection/samples')
+    # also save raw samples, which don't take the floor for hyperparameters
+    df = pd.DataFrame(raw_samples, columns=columns).astype(convert_dict)
+    df.to_hdf(fname, key='model_selection/raw_samples')
 
     # save underlying samples as dataframe
     columns = []
@@ -494,3 +499,7 @@ if args.save_samples:
         columns.append('beta_'+channel)
     df = pd.DataFrame(underlying_samples, columns=columns).astype(convert_dict)
     df.to_hdf(fname, key='model_selection/underlying_samples')
+
+    # save sample probabilities as dataframe
+    df = pd.DataFrame(lnprb, columns=['lnprb'])
+    df.to_hdf(fname, key='model_selection/lnprb')
