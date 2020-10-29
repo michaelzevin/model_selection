@@ -26,7 +26,7 @@ _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
 "chieff": r"$\chi_{\rm eff}$", "z": r"$z$"}
 _Nsamps = 100000
-_marg_kde_bandwidth = 0.01
+_marg_kde_bandwidth = 0.02
 
 # --- Useful functions for accessing items in dictionary
 def getFromDict(dataDict, mapList):
@@ -154,13 +154,13 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
             if plot_obs:
                 for obs in observations:
                     # delta function observations
-                    ax.axvline(obs[pidx], ymax=0.2, color='b', \
-                                                alpha=0.5, zorder=10)
+                    ax.axvline(obs[pidx], ymax=0.1, color='b', \
+                                                alpha=0.4, zorder=-10)
 
             if plot_obs_samples:
                 for obs in obsdata:
-                    ax.axvline(np.median(obs[:,pidx]), ymax=0.2, \
-                                        color='b', alpha=0.5, zorder=10)
+                    ax.axvline(np.median(obs[:,pidx]), ymax=0.1, \
+                                        color='b', alpha=0.4, zorder=-20)
                     # construct KDE from observations
                     obs_samps = pd.DataFrame(obs[:,pidx], columns=[param])
                     obs_kde = KDEModel.from_samples('obs_kde', obs_samps, \
