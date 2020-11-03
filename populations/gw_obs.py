@@ -62,7 +62,10 @@ def generate_observations(params, gwpath, Nsamps, mesaurement_uncertainty='delta
         gw_names = _events_to_use
         gw_files = [gw+'.hdf5' for gw in gw_names]
     else:
-        gw_files = os.listdir(gwpath)
+        gw_files = []
+        for f in os.listdir(gwpath):
+            if 'prior' not in f:
+                gw_files.append(f)
         gw_names = [gw.split('.')[0] for gw in gw_files]
 
     # Check to see if the files are in the obspath, else raise error

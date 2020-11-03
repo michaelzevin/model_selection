@@ -1,7 +1,3 @@
-"""
-Plotting functions so we don't bog down the executable
-"""
-
 import numpy as np
 import pandas as pd
 import os
@@ -22,13 +18,18 @@ cp = sns.color_palette("colorblind", 6)
 _basepath, _ = os.path.split(os.path.realpath(__file__))
 plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 
-_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
-_labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
+_param_bounds = {"mchirp": (0,75), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
+_param_ticks = {"mchirp": [0,25,50,75], "q": [0,0.25,0.5,0.75,1], "chieff": [-1,-0.5,0,0.5,1], "z": [0,0.5,1.0,1.5,2.0]}
+_pdf_bounds = {"mchirp": (0,0.09), "q": (0,32), "chieff": (0,13), "z": (0,4)}
+_pdf_ticks = {"mchirp": [0.0,0.025,0.050,0.075], "q": [0,10,20,30], "chieff": [0,3,6,9,12], "z": (0,1,2,3,4)}
+_labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [$M_{\odot}$]", "q": r"$q$", \
 "chieff": r"$\chi_{\rm eff}$", "z": r"$z$", "chi00": r"$\chi_\mathrm{b}=0.0$", \
 "chi01": r"$\chi_\mathrm{b}=0.1$", "chi02": r"$\chi_\mathrm{b}=0.2$", \
 "chi05": r"$\chi_\mathrm{b}=0.5$", "alpha02": r"$\alpha_\mathrm{CE}=0.2$", \
 "alpha05": r"$\alpha_\mathrm{CE}=0.5$", "alpha10": r"$\alpha_\mathrm{CE}=1.0$", \
-"alpha20": r"$\alpha_\mathrm{CE}=2.0$", "alpha50": r"$\alpha_\mathrm{CE}=5.0$"}
+"alpha20": r"$\alpha_\mathrm{CE}=2.0$", "alpha50": r"$\alpha_\mathrm{CE}=5.0$", \
+"CE": r"$\texttt{CE}$", "CHE": r"$\texttt{CHE}$", "GC": r"$\texttt{GC}$", \
+"NSC": r"$\texttt{NSC}$", "SMT": r"$\texttt{SMT}$"}
 _Nsamps = 100000
 _marg_kde_bandwidth = 0.02
 
@@ -97,7 +98,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                 I_am_legend = False
                 if model0:
                     if (kde.label == model0[channel].label) and (pidx==(len(params)-1)):
-                        label = channel+r" ($\beta$={0:0.2f})".format(kde.rel_frac)
+                        label = _labels_dict[channel]
                         I_am_legend = True
                     else:
                         label=None
@@ -113,16 +114,21 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
 
                 # Format plot
                 if I_am_legend==True:
-                    ax.legend(prop={'size':30}, loc='center', bbox_to_anchor=(1.0,0.5))
+                    ax.legend(prop={'size':40}, loc='center', ncol=5, bbox_to_anchor=(-1.28,1.4))
                 if cidx==Nchannels-1:
                     ax.set_xlim(*_param_bounds[param])
-                    ax.set_ylim(bottom=0)#, top=pdf_max)
+                    ax.set_xticks(_param_ticks[param])
+                    ax.set_ylim(*_pdf_bounds[param])
+                    ax.set_yticks(_pdf_ticks[param])
                     if idx==Nsbmdls-1:
-                        ax.set_xlabel(_labels_dict[param], fontsize=40)
+                        ax.set_xlabel(_labels_dict[param], fontsize=35)
+                        ax.set_xticklabels(_param_ticks[param])
+                    else:
+                        ax.set_xticklabels([])
                     if pidx==0:
-                        ax.set_ylabel(_labels_dict[model.split('/')[1]], fontsize=50)
+                        ax.set_ylabel(_labels_dict[model.split('/')[1]]+"\n"+r"$p(\theta)$", fontsize=35, labelpad=8)
                     if idx==0:
-                        ax.set_title(_labels_dict[param], fontsize=40)
+                        ax.set_title(_labels_dict[param], fontsize=35)
 
 
 
@@ -158,13 +164,13 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
             if plot_obs:
                 for obs in observations:
                     # delta function observations
-                    ax.axvline(obs[pidx], ymax=0.1, color='b', \
+                    ax.axvline(obs[pidx], ymax=0.1, color='k', \
                                                 alpha=0.4, zorder=-10)
 
             if plot_obs_samples:
                 for obs in obsdata:
                     ax.axvline(np.median(obs[:,pidx]), ymax=0.1, \
-                                        color='b', alpha=0.4, zorder=-20)
+                                        color='k', alpha=0.4, zorder=-20)
                     # construct KDE from observations
                     obs_samps = pd.DataFrame(obs[:,pidx], columns=[param])
                     obs_kde = KDEModel.from_samples('obs_kde', obs_samps, \
@@ -178,140 +184,9 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                     pdf = 0.2 * pdf/(pdf.max()/pdf_max)
 
                     ax.fill_between(eval_pts.flatten(), \
-                      y1=np.zeros_like(pdf), y2=pdf, color='b', alpha=0.05)
+                      y1=np.zeros_like(pdf), y2=pdf, color='k', alpha=0.05)
 
-    # Titles and saving
-    if model0:
-        model0_name = model0[channels[0]].label.split('/', 1)[1]
-    else:
-        model0_name='GW observations'
-    if fixed_vals:
-        plt.suptitle("Sampled model: {0:s}".format(model0_name)+'\n (fixed values: '+\
-                            ','.join('{}'.format(x) for x in fixed_vals)+')', fontsize=55)
-    else:
-        plt.suptitle("Sampled model: {0:s}".format(model0_name), fontsize=55)
-    if name:
-        fname = 'marginalized_kdes_'+name+'.png'
-    else:
-        fname = 'marginalized_kdes.png'
+    plt.subplots_adjust(right=0.97, bottom=0.08)
+    fname = '/Users/michaelzevin/research/model_selection/model_selection/paper/figures/pop_models.png'
     plt.savefig(fname)
     plt.close()
-
-
-
-
-def plot_samples(samples, submodels_dict, model_names, channels, model0, name=None, hyper_idx=0, detectable_beta=False):
-    """
-    Plots the models that the chains are exploring, and histograms of the 
-    branching fraction recovered for each model.
-
-    :hyper_marg_idx: defines the index of the hyperparaeter in submodels_dict
-    you wish to plot, marginalizing over the other parameters
-    """
-
-    Nhyper = len(submodels_dict)
-
-    # setup the plots
-    fig = plt.figure(figsize=(12,7))
-    gs = gridspec.GridSpec(len(channels), 3, wspace=0.2, hspace=0.2)
-    ax_chains, ax_margs = [], []
-    for cidx, channel in enumerate(channels):
-        ax_chains.append(fig.add_subplot(gs[cidx, :2]))
-        ax_margs.append(fig.add_subplot(gs[cidx, -1]))
-
-    # plot the chains moving in beta space, colored by their model
-    for chain in samples:
-        for midx, model in submodels_dict[hyper_idx].items():
-            smdl_locs = np.argwhere(chain[:,hyper_idx]==midx)[:,0]
-            steps = np.arange(chain.shape[0])
-            for cidx, channel in enumerate(channels):
-                ax_chains[cidx].scatter(steps[smdl_locs], \
-                    chain[smdl_locs,cidx+Nhyper], color=cp[midx], s=0.5, alpha=0.2)
-
-    # plot the histograms on beta for each model
-    # compactify all the chains in samples
-    samples_allchains = np.reshape(samples, (samples.shape[0]*samples.shape[1], samples.shape[2]))
-    basemdl_samps = len(np.argwhere(samples_allchains[:,hyper_idx]==0).flatten())
-    h_max = 0
-    for midx, model in submodels_dict[hyper_idx].items():
-        smdl_locs = np.argwhere(samples_allchains[:,hyper_idx]==midx).flatten()
-        mdl_samps = len(smdl_locs)
-        if basemdl_samps > 0:
-            BF = float(mdl_samps)/basemdl_samps
-        else:
-            BF = float(mdl_samps)
-        for cidx, channel in enumerate(channels):
-            h, bins, _ = ax_margs[cidx].hist(samples_allchains[smdl_locs, cidx+Nhyper], \
-                orientation='horizontal', histtype='step', color=cp[midx], bins=50, \
-                alpha=0.7, label=model+', BF={0:0.1e}'.format(BF))
-            h_max = h.max() if h.max() > h_max else h_max
-
-
-    # format plot
-    for cidx, (channel, ax_chain, ax_marg) in enumerate(zip(channels, \
-                                                ax_chains, ax_margs)):
-
-        # plot the injected value
-        if model0:
-            if detectable_beta==True:
-                ax_chain.axhline(model0[channel].rel_frac, color='k', \
-                        linestyle='--', alpha=0.7)
-                ax_marg.axhline(model0[channel].rel_frac, color='k', \
-                        linestyle='--', alpha=0.7)
-            if detectable_beta==False:
-                ax_chain.axhline(model0[channel].underlying_frac, color='k', \
-                        linestyle='--', alpha=0.7)
-                ax_marg.axhline(model0[channel].underlying_frac, color='k', \
-                        linestyle='--', alpha=0.7)
-
-        # tick labels
-        if cidx != len(channels)-1:
-            ax_chain.set_xticklabels([])
-            ax_marg.set_xticklabels([])
-        ax_chain.set_yticks([0,0.5,1.0])
-        ax_marg.set_yticklabels([])
-        ax_chain.tick_params(axis='both', labelsize=20)
-        ax_marg.tick_params(axis='both', labelsize=20)
-
-        # legend
-        if cidx == 0:
-            ax_marg.legend(loc='center', bbox_to_anchor=[1.0,1.0], prop={'size':10})
-
-        if cidx == len(channels)-1:
-            ax_chain.set_xlabel('Step', fontsize=30)
-            ax_marg.set_xlabel(r"p($\beta$)", fontsize=30)
-
-        ax_chain.set_ylabel(r"$\beta_{%s}$" % format(channel), fontsize=30)
-        ax_chain.set_xlim(0,samples.shape[1])
-        ax_chain.set_ylim(0,1)
-        ax_marg.set_xlim(0,h_max+10)
-        ax_marg.set_ylim(0,1)
-
-
-    # title
-    if model0:
-        # find the deepest model
-        channel_depth = 0
-        for channel in channels:
-            if len(model0[channel].label.split('/')) > channel_depth:
-                channel_depth = len(model0[channel].label.split('/'))
-                deepest_channel = channel
-        model0_name = model0[deepest_channel].label.split('/', 1)[1]
-    else:
-        model0_name='GW observations'
-    plt.suptitle("True model: {0:s}".format(model0_name), fontsize=40)
-    if detectable_beta==True:
-        fname = 'samples_detectable'
-    elif detectable_beta==False:
-        fname = 'samples_underlying'
-    if name:
-        fname = fname+'_hyperidx'+str(hyper_idx)+'_'+name+'.png'
-    else:
-        fname = fname+'_hyperidx'+str(hyper_idx)+'.png'
-    plt.subplots_adjust(bottom=0.15)
-    plt.savefig(fname)
-    plt.close()
-
-
-
-
