@@ -75,6 +75,7 @@ params = args.params
 hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
 Nhyper = np.max([len(x.split('/')) for x in hyperparams])
 
+
 # check that betas are provided if gwobs not specified, check betas, and sort channels and betas consistently
 if not gwobs:
     if not args.betas:
@@ -223,12 +224,17 @@ if gwobs:
     model0=None
     observations, obsdata, events = gw_obs.generate_observations(params, args.gw_path, \
                                             args.Nsamps, args.uncertainty)
+    # calculate p(theta) for each observation with the LVC prior
+    if verbose:
+        print("Calculating LVC prior reweights for p(theta)...")
+    p_theta = gw_obs.prior_reweighting(obsdata, args.gw_path, args.params, args.normalize_kde)
     if verbose:
         print("Using the following {0:d} GW observations for inference:".format(len(events)))
         print(*events, sep=', ')
         print("")
 
 else:
+    p_theta = None
     if verbose:
         if args.detectable_beta:
             print("Drawing {0:d} observations from model0, assuming that the branching fractions represent the *detectable* distribution, and using the '{1:s}' method for measurement uncertainty...".format(int(args.Nobs), args.uncertainty))
@@ -289,7 +295,7 @@ if verbose:
 for model in model_names:
     if verbose:
         print("  {0:s}".format(model))
-    getFromDict(kde_models, model.split('/')).freeze(obsdata, multiproc=args.multiproc)
+    getFromDict(kde_models, model.split('/')).freeze(obsdata, data_pdf=p_theta, multiproc=args.multiproc)
 if verbose:
     print("Done freezing KDE evaluations of observations!\n")
 

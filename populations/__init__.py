@@ -154,8 +154,6 @@ class KDEModel(Model):
         # Get the KDE objects, specify function for pdf
         # This custom KDE handles multiple dimensions, bounds, and weights
         # and takes in samples (Ndim x Nsamps)
-        # FIXME: shouldn't the bounds be changed here if normalized???
-
         if self.normalize==True:
             kde = Bounded_Nd_kde(samples.T, weights=combined_weights, bw_method=bandwidth, bounds=[(0,1)]*len(self.params))
             self.pdf = lambda x: kde(normalize_samples(x, self.param_bounds).T) / pdf_scale
@@ -204,7 +202,7 @@ class KDEModel(Model):
         because it's a fixed value, dependent only on the observations
         """
         self.cached_values = None
-        dpdf = data_pdf if data_pdf is not None else np.ones(data.shape[0])
+        d_pdf = data_pdf if data_pdf is not None else np.ones((data.shape[0],data.shape[1]))
         pdf_vals = []
 
         if multiproc==True:
@@ -212,7 +210,7 @@ class KDEModel(Model):
             processes = []
             manager = multiprocessing.Manager()
             return_dict = manager.dict()
-            for idx, (d,dp) in tqdm(enumerate(zip(data,dpdf)), total=len(data)):
+            for idx, (d,dp) in tqdm(enumerate(zip(data,d_pdf)), total=len(data)):
                 d = d.reshape((1, d.shape[0], d.shape[1]))
                 dp = [dp]
                 p = multiprocessing.Process(target=self, args=(d,dp,idx,return_dict,))
@@ -224,9 +222,9 @@ class KDEModel(Model):
             for i in sorted(list(return_dict.keys())):
                 pdf_vals.append(return_dict[i])
         else:
-            for idx, (d,dp) in tqdm(enumerate(zip(data,dpdf)), total=len(data)):
+            for idx, (d,dp) in tqdm(enumerate(zip(data,d_pdf)), total=len(data)):
                 d = d.reshape((1, d.shape[0], d.shape[1]))
-                dp = [dp]
+                dp = dp.reshape((1, dp.shape[0]))
                 pdf_vals.append(self(d, dp))
 
         pdf_vals = np.asarray(pdf_vals).flatten()
@@ -243,11 +241,11 @@ class KDEModel(Model):
             return self.cached_values
 
         prob = np.ones(data.shape[0]) * 1e-20
-        for idx, obs in enumerate(np.atleast_3d(data)):
+        d_pdf = data_pdf if data_pdf is not None else np.ones((data.shape[0],data.shape[1]))
+        for idx, (obs, dp) in enumerate(zip(np.atleast_3d(data),d_pdf)):
             # Evaluate the KDE at the samples
-            d_pdf = data_pdf[idx] if data_pdf is not None else 1
-            # FIXME: does it matter that we average rather than sum?
-            prob[idx] += np.sum(self.pdf(obs) / d_pdf) / len(obs)
+            prob[idx] += np.sum(self.pdf(obs) / dp) / len(obs)
+            # FIXME: this is where we should divide out the prior on theta? If so, data_pdf should have the dimensions [Nobs x Nsamples]. But wouldn't this be double-counting the p(\theta) term?
         # store value for multiprocessing
         if return_dict is not None:
             return_dict[proc_idx] = prob

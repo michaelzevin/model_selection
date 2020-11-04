@@ -1,11 +1,14 @@
 import os
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 import astropy.units as u
 from astropy import cosmology
 from astropy.cosmology import z_at_value
 cosmo = cosmology.Planck15
+
+from . import *
 
 """
 Function for using GW observations for generating the observations in model 
@@ -21,6 +24,9 @@ _events_to_use = None
 
 # specify the hdf5 key for the approximant being used
 _posterior_key = "combined"
+
+# specify the name of the prior file
+_prior_file = 'LVC_prior.hdf5'
 
 # conversion function
 def _gwtc_to_mchirp(gw):
@@ -139,3 +145,13 @@ no transformations exist to generate it from the GW data!".format(p))
 
     return observations, samples, gw_names
 
+
+def prior_reweighting(samples, gw_path, params, normalize=False):
+    """Generate KDE model for the LVC prior, which needs to be divided out during inference"""
+    df = pd.read_hdf(os.path.join(gw_path, _prior_file), key='samples')
+    prior = KDEModel.from_samples('prior', df, params, normalize=normalize)
+    prior_reweights = np.zeros((samples.shape[0], samples.shape[1]))
+    for idx, obs in tqdm(enumerate(samples), total=len(samples)):
+        prior_reweights[idx] = prior.pdf(obs)
+    #prior_reweights /= np.sum(prior_reweights)
+    return prior_reweights
