@@ -146,12 +146,11 @@ no transformations exist to generate it from the GW data!".format(p))
     return observations, samples, gw_names
 
 
-def prior_reweighting(samples, gw_path, params, normalize=False):
+def prior_reweighting(samples, prior_path, params, normalize=False):
     """Generate KDE model for the LVC prior, which needs to be divided out during inference"""
-    df = pd.read_hdf(os.path.join(gw_path, _prior_file), key='samples')
+    df = pd.read_hdf(prior_path, key='samples')
     prior = KDEModel.from_samples('prior', df, params, normalize=normalize)
     prior_reweights = np.zeros((samples.shape[0], samples.shape[1]))
     for idx, obs in tqdm(enumerate(samples), total=len(samples)):
         prior_reweights[idx] = prior.pdf(obs)
-    #prior_reweights /= np.sum(prior_reweights)
     return prior_reweights
