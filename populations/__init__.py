@@ -64,16 +64,16 @@ class KDEModel(Model):
             if 'pdet_'+sensitivity not in samples.columns:
                 raise ValueError("{0:s} was specified for your detection weights, but cannot find this column in the samples datafarme!")
                 
-        # get the conversion factor between the underlying and detectable population
+        # get *\alpha* for each model, defined as \int p(\theta|\lambda) Pdet(\theta) d\theta
         if sensitivity is not None:
             # if cosmological weights are provided, do mock draws from the pop
             if 'weight' in samples.keys():
                 mock_samp = samples.sample(int(1e6), weights=(samples['weight']/len(samples)), replace=True)
             else:
                 mock_samp = samples.sample(int(1e6), replace=True)
-            detectable_convfac = np.sum(mock_samp['pdet_'+sensitivity]) / len(mock_samp)
+            alpha = np.sum(mock_samp['pdet_'+sensitivity]) / len(mock_samp)
         else:
-            detectable_convfac = 1.0
+            alpha = 1.0
 
         # downsample population
         if len(samples) > _maxsamps:
@@ -103,10 +103,10 @@ class KDEModel(Model):
         # get KDE bandwidth, if specified in kwargs
         bandwidth = kwargs['bandwidth'] if 'bandwidth' in kwargs.keys() else _kde_bandwidth
 
-        return KDEModel(label, kde_samples, params, bandwidth, cosmo_weights, sensitivity, pdets, optimal_snrs, detectable_convfac, normalize=normalize)
+        return KDEModel(label, kde_samples, params, bandwidth, cosmo_weights, sensitivity, pdets, optimal_snrs, alpha, normalize=normalize)
 
 
-    def __init__(self, label, samples, params, bandwidth=_kde_bandwidth, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, detectable_convfac=1, normalize=False):
+    def __init__(self, label, samples, params, bandwidth=_kde_bandwidth, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, alpha=1, normalize=False):
         super()
         self.label = label
         self.samples = samples
@@ -116,7 +116,7 @@ class KDEModel(Model):
         self.sensitivity = sensitivity
         self.pdets = pdets
         self.optimal_snrs = optimal_snrs
-        self.detectable_convfac = detectable_convfac
+        self.alpha = alpha
         self.normalize = normalize
 
         # Save range of each parameter
@@ -178,15 +178,8 @@ class KDEModel(Model):
     def rel_frac(self, beta):
         """
         Stores the relative fraction of samples that are drawn from this KDE model
-        This is the 'detectable' branching fraction
         """
         self.rel_frac = beta
-
-    def underlying_frac(self, beta):
-        """
-        Stores the branching fraction of the underlying population
-        """
-        self.underlying_frac = beta
 
     def Nobs_from_beta(self, Nobs):
         """

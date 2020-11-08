@@ -25,9 +25,6 @@ _events_to_use = None
 # specify the hdf5 key for the approximant being used
 _posterior_key = "combined"
 
-# specify the name of the prior file
-_prior_file = 'LVC_prior.hdf5'
-
 # conversion function
 def _gwtc_to_mchirp(gw):
     m1 = gw['m1_detector_frame_Msun']
@@ -62,7 +59,7 @@ gwtc_transforms = {'mchirp': _gwtc_to_mchirp, 'q': _gwtc_to_q, \
                    'chieff': _gwtc_to_chieff, 'z': _gwtc_to_redshift}
 
 
-def generate_observations(params, gwpath, Nsamps, mesaurement_uncertainty='delta'):
+def generate_observations(params, gwpath, Nsamps, mesaurement_uncertainty='delta', prior=None):
 
     if _events_to_use:
         gw_names = _events_to_use
@@ -99,8 +96,13 @@ def generate_observations(params, gwpath, Nsamps, mesaurement_uncertainty='delta
         samples_shape = (len(gw_files), Nsamps, len(params))
         samples=np.zeros(samples_shape)
     else:
-        raise ValueError("{0:s} is not an available options for smearing GW \
-observations!".format(mesaurement_uncertainty))
+        raise ValueError("{0:s} is not an available options for smearing GW observations!".format(mesaurement_uncertainty))
+
+    # If prior key is set, set up empty array for prior weights p(theta)
+    if prior is not None:
+        p_theta = np.zeros((samples.shape[0],samples.shape[1]))
+    else:
+        p_theta = np.ones((samples.shape[0],samples.shape[1]))
 
     # Now, get the samples for each event
     for idx, f in enumerate(gw_files):
@@ -116,17 +118,21 @@ observations!".format(mesaurement_uncertainty))
             elif p in gwtc_transforms.keys():
                 df[p] = gwtc_transforms[p](df)
             else:
-                raise KeyError("Parameter {0:s} not found in the GW data, and \
-no transformations exist to generate it from the GW data!".format(p))
+                raise KeyError("Parameter {0:s} not found in the GW data, and no transformations exist to generate it from the GW data!".format(p))
+
+        # see if the specified prior key is in the data
+        if prior is not None:
+            if prior not in df.columns:
+                raise KeyError("Prior key {0:s} is not in the GW data for file {1:s}!".format(prior,f))
 
         # get the median observations (need to return for later)
-        for pidx, p in enumerate(params):
-            observations[idx, pidx] = np.median(df[p])
+        observations[idx, :] = np.median(df[params], axis=0)
 
         # delta function observations
         if mesaurement_uncertainty == 'delta':
-            for pidx, p in enumerate(params):
-                samples[idx, :, pidx] = np.median(df[p])
+            samples[idx, :, :] = np.median(df[params], axis=0)
+            if prior is not None:
+                p_theta[idx, :] = np.median(df[prior])
         # gaussian smearing
         if mesaurement_uncertainty == 'gaussian':
             for pidx, p in enumerate(params):
@@ -137,20 +143,14 @@ no transformations exist to generate it from the GW data!".format(p))
                 samples[idx, :, pidx] = np.random.normal(loc=mean, \
                                                 scale=sigma, size=Nsamps)
         if mesaurement_uncertainty == 'posteriors':
-            for pidx, p in enumerate(params):
-                if len(df) >= Nsamps:
-                    samples[idx, :, pidx] = df[p].sample(Nsamps, replace=False)
-                else:
-                    samples[idx, :, pidx] = df[p].sample(Nsamps, replace=True)
+            if len(df) >= Nsamps:
+                sample_idxs = np.random.choice(np.arange(len(df)), size=Nsamps, replace=False)
+            else:
+                sample_idxs = np.random.choice(np.arange(len(df)), size=Nsamps, replace=True)
 
-    return observations, samples, gw_names
+            samples[idx, :, :] = df[params].iloc[sample_idxs]
+            if prior is not None:
+                p_theta[idx, :] = df[prior].iloc[sample_idxs]
 
+    return observations, samples, p_theta, gw_names
 
-def prior_reweighting(samples, prior_path, params, normalize=False):
-    """Generate KDE model for the LVC prior, which needs to be divided out during inference"""
-    df = pd.read_hdf(prior_path, key='samples')
-    prior = KDEModel.from_samples('prior', df, params, normalize=normalize)
-    prior_reweights = np.zeros((samples.shape[0], samples.shape[1]))
-    for idx, obs in tqdm(enumerate(samples), total=len(samples)):
-        prior_reweights[idx] = prior.pdf(obs)
-    return prior_reweights
