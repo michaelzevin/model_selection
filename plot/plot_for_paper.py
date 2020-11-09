@@ -83,7 +83,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                     ax = axs[idx,pidx]
 
                 # marginalize the kde (this redoes the KDE in 1D)
-                 # make sure to set alpha=1 so each channel is evenly weighted in plot
+                # make sure to set alpha=1 so each channel is evenly weighted in plot
                 marg_kde = kde.marginalize([param], alpha=1, bandwidth=_marg_kde_bandwidth)
 
                 # evaluate the marginalized kde over the param range
