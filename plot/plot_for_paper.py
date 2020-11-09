@@ -83,7 +83,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                     ax = axs[idx,pidx]
 
                 # marginalize the kde (this redoes the KDE in 1D)
-                marg_kde = kde.marginalize([param], bandwidth=_marg_kde_bandwidth)
+                marg_kde = kde.marginalize([param], alpha=1, bandwidth=_marg_kde_bandwidth)
 
                 # evaluate the marginalized kde over the param range
                 eval_pts = np.linspace(*_param_bounds[param], 100)
