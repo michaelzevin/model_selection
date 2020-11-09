@@ -246,7 +246,7 @@ class KDEModel(Model):
             return_dict[proc_idx] = likelihood
         return likelihood
 
-    def marginalize(self, params, bandwidth=_kde_bandwidth):
+    def marginalize(self, params, alpha, bandwidth=_kde_bandwidth):
         """
         Generate a new, lower dimensional, KDEModel from the parameters in [params]
         """
@@ -255,7 +255,7 @@ class KDEModel(Model):
             label += '_'+p
         label += '_marginal'
 
-        return KDEModel(label, self.samples[params], params, bandwidth, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, self.alpha, self.normalize)
+        return KDEModel(label, self.samples[params], params, bandwidth, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, alpha, self.normalize)
 
 
     def generate_observations(self, Nobs, uncertainty, sample_from_kde=False, sensitivity='design_network', psd_path=None, multiproc=True, verbose=False):

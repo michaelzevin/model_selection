@@ -82,7 +82,8 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                     ax = axs[idx,pidx]
 
                 # marginalize the kde (this redoes the KDE in 1D)
-                marg_kde = kde.marginalize([param], bandwidth=_marg_kde_bandwidth)
+                # make sure to set alpha=1 so each channel is evenly weighted in plot
+                marg_kde = kde.marginalize([param], alpha=1, bandwidth=_marg_kde_bandwidth)
 
                 # evaluate the marginalized kde over the param range
                 eval_pts = np.linspace(*_param_bounds[param], 100)
@@ -146,7 +147,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
             # construct combined KDE model and plot
             if model0:
                 combined_samples = pd.DataFrame(model0_samples[:,pidx].flatten(), columns=[param])
-                combined_kde = KDEModel.from_samples('combined_kde', combined_samples, [param], weighting=None, bandwidth=_marg_kde_bandwidth)
+                combined_kde = KDEModel.from_samples('combined_kde', combined_samples, [param], sensitivity=None, bandwidth=_marg_kde_bandwidth)
                 eval_pts = np.linspace(*_param_bounds[param], 100)
                 eval_pts = eval_pts.reshape(100,1,1)
                 pdf = combined_kde(eval_pts)
@@ -168,7 +169,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
                     # construct KDE from observations
                     obs_samps = pd.DataFrame(obs[:,pidx], columns=[param])
                     obs_kde = KDEModel.from_samples('obs_kde', obs_samps, \
-                                                   [param], weighting=None)
+                                                   [param], seneitivity=None)
                     eval_pts = np.linspace(obs_samps.min(), \
                                                     obs_samps.max(), 100)
                     eval_pts = eval_pts.reshape(100,1,1)
