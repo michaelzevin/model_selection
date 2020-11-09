@@ -49,7 +49,7 @@ class Model(object):
 
 class KDEModel(Model):
     @staticmethod
-    def from_samples(label, samples, params, sensitivity=None, normalize=False, **kwargs):
+    def from_samples(label, samples, params, sensitivity=None, normalize=False, detectable=False, **kwargs):
         """
         Generate a KDE model instance from `samples`, where `params` are \
         series in the `samples` dataframe. Additional *kwargs* can be passed \
@@ -103,10 +103,10 @@ class KDEModel(Model):
         # get KDE bandwidth, if specified in kwargs
         bandwidth = kwargs['bandwidth'] if 'bandwidth' in kwargs.keys() else _kde_bandwidth
 
-        return KDEModel(label, kde_samples, params, bandwidth, cosmo_weights, sensitivity, pdets, optimal_snrs, alpha, normalize=normalize)
+        return KDEModel(label, kde_samples, params, bandwidth, cosmo_weights, sensitivity, pdets, optimal_snrs, alpha, normalize=normalize, detectable=detectable)
 
 
-    def __init__(self, label, samples, params, bandwidth=_kde_bandwidth, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, alpha=1, normalize=False):
+    def __init__(self, label, samples, params, bandwidth=_kde_bandwidth, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, alpha=1, normalize=False, detectable=False):
         super()
         self.label = label
         self.samples = samples
@@ -118,6 +118,7 @@ class KDEModel(Model):
         self.optimal_snrs = optimal_snrs
         self.alpha = alpha
         self.normalize = normalize
+        self.detectable = detectable
 
         # Save range of each parameter
         self.sample_range = {}
@@ -125,14 +126,23 @@ class KDEModel(Model):
             self.sample_range[param] = (samples[param].min(), samples[param].max())
 
         # Combine the cosmological and detection weights
-        if (cosmo_weights is not None) and (pdets is not None):
-            combined_weights = (cosmo_weights / np.sum(cosmo_weights)) * (pdets / np.sum(pdets))
-        elif pdets is not None:
-            combined_weights = (pdets / np.sum(pdets))
+        if self.detectable == True:
+            if (cosmo_weights is not None) and (pdets is not None):
+                combined_weights = (cosmo_weights / np.sum(cosmo_weights)) * (pdets / np.sum(pdets))
+            elif pdets is not None:
+                combined_weights = (pdets / np.sum(pdets))
+            else:
+                combined_weights = np.ones(len(samples))
+            combined_weights /= np.sum(combined_weights)
+            self.combined_weights = combined_weights
         else:
-            combined_weights = np.ones(len(samples))
-        combined_weights /= np.sum(combined_weights)
-        self.combined_weights = combined_weights
+            if (cosmo_weights is not None):
+                combined_weights = (cosmo_weights / np.sum(cosmo_weights))
+            else:
+                combined_weights = np.ones(len(samples))
+            combined_weights /= np.sum(combined_weights)
+            self.combined_weights = combined_weights
+        
 
         # Normalize data s.t. they all are on the unit cube
         self.param_bounds = [_param_bounds[param] for param in samples.keys()]
@@ -152,8 +162,8 @@ class KDEModel(Model):
                 samples[:,idx] += np.random.normal(loc=0.0, scale=1e-5, size=samples.shape[0])
 
         # Get the KDE objects, specify function for pdf
-        # This custom KDE handles multiple dimensions, bounds, and weights
-        # and takes in samples (Ndim x Nsamps)
+        # This custom KDE handles multiple dimensions, bounds, and weights, and takes in samples (Ndim x Nsamps)
+        # By default, the detection-weighted KDE and underlying KDE (for samples that have Pdet>0)  are saved
         if self.normalize==True:
             kde = Bounded_Nd_kde(samples.T, weights=combined_weights, bw_method=bandwidth, bounds=[(0,1)]*len(self.params))
             self.pdf = lambda x: kde(normalize_samples(x, self.param_bounds).T) / pdf_scale
@@ -180,6 +190,12 @@ class KDEModel(Model):
         Stores the relative fraction of samples that are drawn from this KDE model
         """
         self.rel_frac = beta
+
+    def rel_frac_detectable(self, beta):
+        """
+        Stores the detectable relative fraction of samples that are drawn from this KDE model
+        """
+        self.rel_frac_detectable = beta
 
     def Nobs_from_beta(self, Nobs):
         """
@@ -255,7 +271,7 @@ class KDEModel(Model):
             label += '_'+p
         label += '_marginal'
 
-        return KDEModel(label, self.samples[params], params, bandwidth, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, alpha, self.normalize)
+        return KDEModel(label, self.samples[params], params, bandwidth, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, alpha, self.normalize, self.detectable)
 
 
     def generate_observations(self, Nobs, uncertainty, sample_from_kde=False, sensitivity='design_network', psd_path=None, multiproc=True, verbose=False):

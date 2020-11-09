@@ -68,8 +68,14 @@ def setInDict(dataDict, mapList, value):
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
 
 # --- Load in models/kdemodels into dict structure: models[model][channel]
+# Construct both "underlying" KDE models (anything that has Pdet>0) and "detectable" KDE models
 # `normalize` argument normalizes KDEs on unit cube
-model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, verbose=verbose)
+if verbose:
+    print("\nReading models, applying transformations, and initializing underlying KDEs...\n")
+model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, detectable=False)
+if verbose:
+    print("\nReading models, applying transformations, and initializing detectable KDEs...\n")
+_, kde_models_detectable = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, detectable=True)
 model_names.sort()
 params = args.params
 hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
@@ -181,6 +187,7 @@ if not gwobs:
 
     # since channels are sorted alphabetically, branching fractions are defined in the same order
     model0 = {}
+    model0_detectable = {}
     for idx, channel in enumerate(channels):
         channel_mdls = [x for x in model_names if channel+'/' in x]
         for model in channel_mdls:
@@ -188,10 +195,12 @@ if not gwobs:
             # print info about model0
             if (smdl in args.model0):
                 model0[channel] = getFromDict(kde_models, model.split('/'))
+                model0_detectable[channel] = getFromDict(kde_models_detectable, model.split('/'))
 
     # set branching fractions as attributes in KDEModels
     for idx, channel in enumerate(channels):
         model0[channel].rel_frac(betas[idx])
+        model0_detectable[channel].rel_frac(betas[idx])
 
     # print model0 info
     if verbose:
@@ -261,7 +270,7 @@ if make_plots==True:
         fixed_vals = [args.model0.split('/')[-1]]
     else:
         fixed_vals = ['alpha10']
-    msplot.plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, \
+    msplot.plot_1D_kdemodels(model_names, kde_models_detectable, params, observations, obsdata, \
            model0, name=args.name, fixed_vals=fixed_vals, plot_obs=True, plot_obs_samples=False)
     if verbose:
         print("")
@@ -339,8 +348,10 @@ smdls = list(set([x.split('/',1)[1] for x in model_names]))
 # get the conversion factors between the detectable and underlying distributions
 for smdl in sorted(smdls):
     detectable_convfacs = []
+    rel_fracs_underlying = []
     for channel in channels:
         detectable_convfacs.append(getFromDict(kde_models, [channel]+smdl.split('/')).alpha)
+        rel_fracs_underlying.append(getFromDict(kde_models, [channel]+smdl.split('/')).rel_frac)
     detectable_convfacs = np.asarray(detectable_convfacs)
     # loop over hyperparams to get samples in this submodel
     hyperparams = smdl.split('/')
@@ -359,16 +370,12 @@ for smdl in sorted(smdls):
     converted_betas = detectable_samples[matching_idxs,len(hyperparams):] / detectable_convfacs
     converted_betas /= converted_betas.sum(axis=1, keepdims=True)
     detectable_samples[matching_idxs,len(hyperparams):] = converted_betas
-
-
-# Plot samples and histograms of betas per model
-if make_plots==True:
-    if verbose:
-        print("Plotting samples...\n")
-    for hyper_idx in list(submodels_dict.keys()):
-        # Need samples back in their original shape (separated by chains)
-        msplot.plot_samples(samples.reshape(original_shape), submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx, detectable_beta=False)
-        msplot.plot_samples(detectable_samples.reshape(original_shape), submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx, detectable_beta=True)
+    # save convert relative fractions 
+    if model0:
+        converted_rel_fracs = rel_fracs_underlying / detectable_convfacs
+        converted_rel_fracs /= np.sum(converted_rel_fracs)
+        for cidx, channel in enumerate(channels):
+            getFromDict(kde_models, [channel]+smdl.split('/')).rel_frac_detectable(converted_rel_fracs[cidx])
 
 
 # --- Print summary info about the sampling
@@ -417,6 +424,16 @@ if verbose:
         print("     betas={0}".format(list(sample_betas.items())))
         print("     detectable betas={0}".format(list(sample_betas_detectable.items())))
     print("")
+
+
+# Plot samples and histograms of betas per model
+if make_plots==True:
+    if verbose:
+        print("Plotting samples...\n")
+    for hyper_idx in list(submodels_dict.keys()):
+        # Need samples back in their original shape (separated by chains)
+        msplot.plot_samples(samples.reshape(original_shape), submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx, detectable_beta=False)
+        msplot.plot_samples(detectable_samples.reshape(original_shape), submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx, detectable_beta=True)
 
 
 # --- Save samples
