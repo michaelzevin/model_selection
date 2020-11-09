@@ -189,60 +189,62 @@ class KDEModel(Model):
 
     def freeze(self, data, data_pdf=None, multiproc=True):
         """
-        Caches the values of the model PDF at the data points provided. This \
-        is useful to construct the hierarchal model likelihood since \
-        p_hyperparam(data) is evaluated many times, but only needs to be once \
+        Caches the values of the model likelihood at the data points provided. This \
+        is useful to construct the hierarchal model likelihood since it \
+        is evaluated many times, but only needs to be once \
         because it's a fixed value, dependent only on the observations
         """
         self.cached_values = None
-        d_pdf = data_pdf if data_pdf is not None else np.ones((data.shape[0],data.shape[1]))
-        pdf_vals = []
+        data_pdf = data_pdf if data_pdf is not None else np.ones((data.shape[0],data.shape[1]))
+        likelihood_vals = []
 
         if multiproc==True:
 
             processes = []
             manager = multiprocessing.Manager()
             return_dict = manager.dict()
-            for idx, (d,dp) in tqdm(enumerate(zip(data,d_pdf)), total=len(data)):
+            for idx, (d,d_pdf) in tqdm(enumerate(zip(data,data_pdf)), total=len(data)):
                 d = d.reshape((1, d.shape[0], d.shape[1]))
-                dp = [dp]
-                p = multiprocessing.Process(target=self, args=(d,dp,idx,return_dict,))
+                d_pdf = [d_pdf]
+                p = multiprocessing.Process(target=self, args=(d,d_pdf,idx,return_dict,))
                 processes.append(p)
                 p.start()
             for process in processes:
                 process.join()
 
             for i in sorted(list(return_dict.keys())):
-                pdf_vals.append(return_dict[i])
+                likelihood_vals.append(return_dict[i])
         else:
-            for idx, (d,dp) in tqdm(enumerate(zip(data,d_pdf)), total=len(data)):
+            for idx, (d,d_pdf) in tqdm(enumerate(zip(data,data_pdf)), total=len(data)):
                 d = d.reshape((1, d.shape[0], d.shape[1]))
-                dp = dp.reshape((1, dp.shape[0]))
-                pdf_vals.append(self(d, dp))
+                d_pdf = d_pdf.reshape((1, d_pdf.shape[0]))
+                likelihood_vals.append(self(d, d_pdf))
 
-        pdf_vals = np.asarray(pdf_vals).flatten()
-        self.cached_values = pdf_vals
+        likelihood_vals = np.asarray(likelihood_vals).flatten()
+        self.cached_values = likelihood_vals
 
     def __call__(self, data, data_pdf=None, proc_idx=None, return_dict=None):
         """
+        Calculate the likelihood of the observations give a particular hypermodel. \
         The expectation is that "data" is a [Nobs x Nsample x Nparams] array. \
         If data_pdf is None, each observation is expected to have equal \
-        posterior probability. Otherwise, the posterior values should be \
-        provided as the same dimensions of the samples.
+        posterior probability. Otherwise, the prior weights should be \
+        provided as the dimemsions [samples(Nobs), samples(Nsamps)].
         """
         if self.cached_values is not None:
             return self.cached_values
 
-        prob = np.ones(data.shape[0]) * 1e-20
-        d_pdf = data_pdf if data_pdf is not None else np.ones((data.shape[0],data.shape[1]))
-        for idx, (obs, dp) in enumerate(zip(np.atleast_3d(data),d_pdf)):
+        likelihood = np.ones(data.shape[0]) * 1e-50
+        data_pdf = data_pdf if data_pdf is not None else np.ones((data.shape[0],data.shape[1]))
+        data_pdf[data_pdf==0] = 1e-50
+        for idx, (obs, d_pdf) in enumerate(zip(np.atleast_3d(data),data_pdf)):
             # Evaluate the KDE at the samples
-            prob[idx] += np.sum(self.pdf(obs) / dp) / len(obs)
-            # FIXME: this is where we should divide out the prior on theta? If so, data_pdf should have the dimensions [Nobs x Nsamples]. But wouldn't this be double-counting the p(\theta) term?
+            likelihood_per_samp = self.pdf(obs) / d_pdf / self.alpha
+            likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)
         # store value for multiprocessing
         if return_dict is not None:
-            return_dict[proc_idx] = prob
-        return prob
+            return_dict[proc_idx] = likelihood
+        return likelihood
 
     def marginalize(self, params, bandwidth=_kde_bandwidth):
         """
@@ -253,7 +255,7 @@ class KDEModel(Model):
             label += '_'+p
         label += '_marginal'
 
-        return KDEModel(label, self.samples[params], params, bandwidth, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, self.detectable_convfac, self.normalize)
+        return KDEModel(label, self.samples[params], params, bandwidth, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, self.alpha, self.normalize)
 
 
     def generate_observations(self, Nobs, uncertainty, sample_from_kde=False, sensitivity='design_network', psd_path=None, multiproc=True, verbose=False):
