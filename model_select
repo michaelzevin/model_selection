@@ -348,10 +348,8 @@ smdls = list(set([x.split('/',1)[1] for x in model_names]))
 # get the conversion factors between the detectable and underlying distributions
 for smdl in sorted(smdls):
     detectable_convfacs = []
-    rel_fracs_underlying = []
     for channel in channels:
         detectable_convfacs.append(getFromDict(kde_models, [channel]+smdl.split('/')).alpha)
-        rel_fracs_underlying.append(getFromDict(kde_models, [channel]+smdl.split('/')).rel_frac)
     detectable_convfacs = np.asarray(detectable_convfacs)
     # loop over hyperparams to get samples in this submodel
     hyperparams = smdl.split('/')
@@ -363,19 +361,21 @@ for smdl in sorted(smdls):
         else:
             matching_idxs = matching_idxs[np.where(matching_samps[:,idx] == hyper_idx)[0]]
             matching_samps = samples[matching_idxs]
-    # if no sample are in this model, continue
+    # if no samples are in this model, continue
     if len(matching_idxs)==0:
         continue
     # convert hyperparams of these samples accordingly to get the underlying betas
     converted_betas = detectable_samples[matching_idxs,len(hyperparams):] / detectable_convfacs
     converted_betas /= converted_betas.sum(axis=1, keepdims=True)
     detectable_samples[matching_idxs,len(hyperparams):] = converted_betas
-    # save convert relative fractions 
-    if model0:
-        converted_rel_fracs = rel_fracs_underlying / detectable_convfacs
+
+    # save converted relative fractions to model0
+    if smdl==args.model0:
+        converted_rel_fracs = betas / detectable_convfacs
         converted_rel_fracs /= np.sum(converted_rel_fracs)
         for cidx, channel in enumerate(channels):
-            getFromDict(kde_models, [channel]+smdl.split('/')).rel_frac_detectable(converted_rel_fracs[cidx])
+            model0[channel].rel_frac_detectable(converted_rel_fracs[cidx])
+            model0_detectable[channel].rel_frac_detectable(converted_rel_fracs[cidx])
 
 
 # --- Print summary info about the sampling
