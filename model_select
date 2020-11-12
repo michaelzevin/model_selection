@@ -371,7 +371,7 @@ for smdl in sorted(smdls):
 
     # save converted relative fractions to model0
     if smdl==args.model0:
-        converted_rel_fracs = betas / detectable_convfacs
+        converted_rel_fracs = betas * detectable_convfacs
         converted_rel_fracs /= np.sum(converted_rel_fracs)
         for cidx, channel in enumerate(channels):
             model0[channel].rel_frac_detectable(converted_rel_fracs[cidx])
