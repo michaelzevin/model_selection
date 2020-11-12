@@ -365,7 +365,7 @@ for smdl in sorted(smdls):
     if len(matching_idxs)==0:
         continue
     # convert hyperparams of these samples accordingly to get the underlying betas
-    converted_betas = detectable_samples[matching_idxs,len(hyperparams):] / detectable_convfacs
+    converted_betas = detectable_samples[matching_idxs,len(hyperparams):] * detectable_convfacs
     converted_betas /= converted_betas.sum(axis=1, keepdims=True)
     detectable_samples[matching_idxs,len(hyperparams):] = converted_betas
 
