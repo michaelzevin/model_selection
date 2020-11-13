@@ -14,7 +14,8 @@ from matplotlib import gridspec
 
 from populations import *
 
-cp = sns.color_palette("colorblind", 6)
+colors = sns.color_palette("colorblind", n_colors=10)
+cp = [colors[0], colors[2], colors[4], colors[1], colors[3], colors[6], colors[9], colors[5], colors[8]]
 _basepath, _ = os.path.split(os.path.realpath(__file__))
 plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 
