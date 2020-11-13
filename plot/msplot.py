@@ -22,7 +22,7 @@ cp = sns.color_palette("colorblind", 6)
 _basepath, _ = os.path.split(os.path.realpath(__file__))
 plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 
-_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
+_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,10)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
 "chieff": r"$\chi_{\rm eff}$", "z": r"$z$", "chi00": r"$\chi_\mathrm{b}=0.0$", \
 "chi01": r"$\chi_\mathrm{b}=0.1$", "chi02": r"$\chi_\mathrm{b}=0.2$", \

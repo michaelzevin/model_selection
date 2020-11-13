@@ -23,7 +23,7 @@ import astropy.units as u
 cosmo = cosmology.Planck15
 
 # Need to ensure all parameters are normalized over the same range
-_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
+_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,10)}
 _posterior_sigmas = {"mchirp": 1.512, "q": 0.166, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.04, "eta": 0.03, "chieff": 0.14}
 _maxsamps = int(1e5)
