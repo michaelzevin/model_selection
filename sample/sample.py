@@ -164,7 +164,7 @@ def lnp(x, submodels_dict, _concentration):
 
 def lnlike(x, data, kde_models, submodels_dict, channels):
     """
-    Log of the prior x likelihood. 
+    Log of the likelihood. 
     Selects on model, then tests beta.
     """
     model_list = []
@@ -183,6 +183,7 @@ def lnlike(x, data, kde_models, submodels_dict, channels):
         model_list_tmp = model_list.copy()
         model_list_tmp.insert(0,channel)
         smdl = reduce(operator.getitem, model_list_tmp, kde_models)
+        # add contribution from this channel
         prob += beta * smdl(data)
 
     return np.log(prob).sum()

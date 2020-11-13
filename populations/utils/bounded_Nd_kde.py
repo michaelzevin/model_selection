@@ -125,12 +125,22 @@ class Bounded_Nd_kde(kde):
 
         if self.bounds is not None:
             for dim in np.arange(self.Ndim):
-                # reflect over the lower and upper bounds
+                # reflect over the lower bounds
                 edge = self.bounds[dim,0]
                 if edge is not None:
                     out_of_bounds = (resamp_pts[dim] < edge)
                     resamp_pts[dim][out_of_bounds] = 2*edge - resamp_pts[dim][out_of_bounds]
                 # reflect over the upper bound
+                edge = self.bounds[dim,1]
+                if edge is not None:
+                    out_of_bounds = (resamp_pts[dim] > edge)
+                    resamp_pts[dim][out_of_bounds] = 2*edge - resamp_pts[dim][out_of_bounds]
+                # reflect over the lower bounds again
+                edge = self.bounds[dim,0]
+                if edge is not None:
+                    out_of_bounds = (resamp_pts[dim] < edge)
+                    resamp_pts[dim][out_of_bounds] = 2*edge - resamp_pts[dim][out_of_bounds]
+                # reflect over the upper bound again
                 edge = self.bounds[dim,1]
                 if edge is not None:
                     out_of_bounds = (resamp_pts[dim] > edge)

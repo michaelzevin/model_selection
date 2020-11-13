@@ -32,7 +32,8 @@ cosmo = cosmology.Planck15
 
 ### Specify PSD information
 _PSD_defaults = selection_effects._PSD_defaults
-_PSDs_for_pdet = ['midhighlatelow','midhighlatelow_network','design','design_network']
+_PSDs_for_pdet = ['midhighlatelow_network']
+#_PSDs_for_pdet = ['midhighlatelow','midhighlatelow_network','design','design_network']
 
 
 ### Argument handling

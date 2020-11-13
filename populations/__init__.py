@@ -23,7 +23,7 @@ import astropy.units as u
 cosmo = cosmology.Planck15
 
 # Need to ensure all parameters are normalized over the same range
-_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,2)}
+_param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,10)}
 _posterior_sigmas = {"mchirp": 1.512, "q": 0.166, "chieff": 0.1043, "z": 0.0463}
 _snrscale_sigmas = {"mchirp": 0.04, "eta": 0.03, "chieff": 0.14}
 _maxsamps = int(1e5)
@@ -49,7 +49,7 @@ class Model(object):
 
 class KDEModel(Model):
     @staticmethod
-    def from_samples(label, samples, params, sensitivity=None, normalize=False, **kwargs):
+    def from_samples(label, samples, params, sensitivity=None, normalize=False, detectable=False, **kwargs):
         """
         Generate a KDE model instance from `samples`, where `params` are \
         series in the `samples` dataframe. Additional *kwargs* can be passed \
@@ -64,16 +64,16 @@ class KDEModel(Model):
             if 'pdet_'+sensitivity not in samples.columns:
                 raise ValueError("{0:s} was specified for your detection weights, but cannot find this column in the samples datafarme!")
                 
-        # get the conversion factor between the underlying and detectable population
+        # get *\alpha* for each model, defined as \int p(\theta|\lambda) Pdet(\theta) d\theta
         if sensitivity is not None:
             # if cosmological weights are provided, do mock draws from the pop
             if 'weight' in samples.keys():
                 mock_samp = samples.sample(int(1e6), weights=(samples['weight']/len(samples)), replace=True)
             else:
                 mock_samp = samples.sample(int(1e6), replace=True)
-            detectable_convfac = np.sum(mock_samp['pdet_'+sensitivity]) / len(mock_samp)
+            alpha = np.sum(mock_samp['pdet_'+sensitivity]) / len(mock_samp)
         else:
-            detectable_convfac = 1.0
+            alpha = 1.0
 
         # downsample population
         if len(samples) > _maxsamps:
@@ -103,10 +103,10 @@ class KDEModel(Model):
         # get KDE bandwidth, if specified in kwargs
         bandwidth = kwargs['bandwidth'] if 'bandwidth' in kwargs.keys() else _kde_bandwidth
 
-        return KDEModel(label, kde_samples, params, bandwidth, cosmo_weights, sensitivity, pdets, optimal_snrs, detectable_convfac, normalize=normalize)
+        return KDEModel(label, kde_samples, params, bandwidth, cosmo_weights, sensitivity, pdets, optimal_snrs, alpha, normalize=normalize, detectable=detectable)
 
 
-    def __init__(self, label, samples, params, bandwidth=_kde_bandwidth, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, detectable_convfac=1, normalize=False):
+    def __init__(self, label, samples, params, bandwidth=_kde_bandwidth, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, alpha=1, normalize=False, detectable=False):
         super()
         self.label = label
         self.samples = samples
@@ -116,8 +116,9 @@ class KDEModel(Model):
         self.sensitivity = sensitivity
         self.pdets = pdets
         self.optimal_snrs = optimal_snrs
-        self.detectable_convfac = detectable_convfac
+        self.alpha = alpha
         self.normalize = normalize
+        self.detectable = detectable
 
         # Save range of each parameter
         self.sample_range = {}
@@ -125,14 +126,23 @@ class KDEModel(Model):
             self.sample_range[param] = (samples[param].min(), samples[param].max())
 
         # Combine the cosmological and detection weights
-        if (cosmo_weights is not None) and (pdets is not None):
-            combined_weights = (cosmo_weights / np.sum(cosmo_weights)) * (pdets / np.sum(pdets))
-        elif pdets is not None:
-            combined_weights = (pdets / np.sum(pdets))
+        if self.detectable == True:
+            if (cosmo_weights is not None) and (pdets is not None):
+                combined_weights = (cosmo_weights / np.sum(cosmo_weights)) * (pdets / np.sum(pdets))
+            elif pdets is not None:
+                combined_weights = (pdets / np.sum(pdets))
+            else:
+                combined_weights = np.ones(len(samples))
+            combined_weights /= np.sum(combined_weights)
+            self.combined_weights = combined_weights
         else:
-            combined_weights = np.ones(len(samples))
-        combined_weights /= np.sum(combined_weights)
-        self.combined_weights = combined_weights
+            if (cosmo_weights is not None):
+                combined_weights = (cosmo_weights / np.sum(cosmo_weights))
+            else:
+                combined_weights = np.ones(len(samples))
+            combined_weights /= np.sum(combined_weights)
+            self.combined_weights = combined_weights
+        
 
         # Normalize data s.t. they all are on the unit cube
         self.param_bounds = [_param_bounds[param] for param in samples.keys()]
@@ -152,10 +162,8 @@ class KDEModel(Model):
                 samples[:,idx] += np.random.normal(loc=0.0, scale=1e-5, size=samples.shape[0])
 
         # Get the KDE objects, specify function for pdf
-        # This custom KDE handles multiple dimensions, bounds, and weights
-        # and takes in samples (Ndim x Nsamps)
-        # FIXME: shouldn't the bounds be changed here if normalized???
-
+        # This custom KDE handles multiple dimensions, bounds, and weights, and takes in samples (Ndim x Nsamps)
+        # By default, the detection-weighted KDE and underlying KDE (for samples that have Pdet>0)  are saved
         if self.normalize==True:
             kde = Bounded_Nd_kde(samples.T, weights=combined_weights, bw_method=bandwidth, bounds=[(0,1)]*len(self.params))
             self.pdf = lambda x: kde(normalize_samples(x, self.param_bounds).T) / pdf_scale
@@ -180,15 +188,14 @@ class KDEModel(Model):
     def rel_frac(self, beta):
         """
         Stores the relative fraction of samples that are drawn from this KDE model
-        This is the 'detectable' branching fraction
         """
         self.rel_frac = beta
 
-    def underlying_frac(self, beta):
+    def rel_frac_detectable(self, beta):
         """
-        Stores the branching fraction of the underlying population
+        Stores the detectable relative fraction of samples that are drawn from this KDE model
         """
-        self.underlying_frac = beta
+        self.rel_frac_detectable = beta
 
     def Nobs_from_beta(self, Nobs):
         """
@@ -198,62 +205,64 @@ class KDEModel(Model):
 
     def freeze(self, data, data_pdf=None, multiproc=True):
         """
-        Caches the values of the model PDF at the data points provided. This \
-        is useful to construct the hierarchal model likelihood since \
-        p_hyperparam(data) is evaluated many times, but only needs to be once \
+        Caches the values of the model likelihood at the data points provided. This \
+        is useful to construct the hierarchal model likelihood since it \
+        is evaluated many times, but only needs to be once \
         because it's a fixed value, dependent only on the observations
         """
         self.cached_values = None
-        dpdf = data_pdf if data_pdf is not None else np.ones(data.shape[0])
-        pdf_vals = []
+        data_pdf = data_pdf if data_pdf is not None else np.ones((data.shape[0],data.shape[1]))
+        likelihood_vals = []
 
         if multiproc==True:
 
             processes = []
             manager = multiprocessing.Manager()
             return_dict = manager.dict()
-            for idx, (d,dp) in tqdm(enumerate(zip(data,dpdf)), total=len(data)):
+            for idx, (d,d_pdf) in tqdm(enumerate(zip(data,data_pdf)), total=len(data)):
                 d = d.reshape((1, d.shape[0], d.shape[1]))
-                dp = [dp]
-                p = multiprocessing.Process(target=self, args=(d,dp,idx,return_dict,))
+                d_pdf = [d_pdf]
+                p = multiprocessing.Process(target=self, args=(d,d_pdf,idx,return_dict,))
                 processes.append(p)
                 p.start()
             for process in processes:
                 process.join()
 
             for i in sorted(list(return_dict.keys())):
-                pdf_vals.append(return_dict[i])
+                likelihood_vals.append(return_dict[i])
         else:
-            for idx, (d,dp) in tqdm(enumerate(zip(data,dpdf)), total=len(data)):
+            for idx, (d,d_pdf) in tqdm(enumerate(zip(data,data_pdf)), total=len(data)):
                 d = d.reshape((1, d.shape[0], d.shape[1]))
-                dp = [dp]
-                pdf_vals.append(self(d, dp))
+                d_pdf = d_pdf.reshape((1, d_pdf.shape[0]))
+                likelihood_vals.append(self(d, d_pdf))
 
-        pdf_vals = np.asarray(pdf_vals).flatten()
-        self.cached_values = pdf_vals
+        likelihood_vals = np.asarray(likelihood_vals).flatten()
+        self.cached_values = likelihood_vals
 
     def __call__(self, data, data_pdf=None, proc_idx=None, return_dict=None):
         """
+        Calculate the likelihood of the observations give a particular hypermodel. \
         The expectation is that "data" is a [Nobs x Nsample x Nparams] array. \
         If data_pdf is None, each observation is expected to have equal \
-        posterior probability. Otherwise, the posterior values should be \
-        provided as the same dimensions of the samples.
+        posterior probability. Otherwise, the prior weights should be \
+        provided as the dimemsions [samples(Nobs), samples(Nsamps)].
         """
         if self.cached_values is not None:
             return self.cached_values
 
-        prob = np.ones(data.shape[0]) * 1e-20
-        for idx, obs in enumerate(np.atleast_3d(data)):
+        likelihood = np.ones(data.shape[0]) * 1e-50
+        data_pdf = data_pdf if data_pdf is not None else np.ones((data.shape[0],data.shape[1]))
+        data_pdf[data_pdf==0] = 1e-50
+        for idx, (obs, d_pdf) in enumerate(zip(np.atleast_3d(data),data_pdf)):
             # Evaluate the KDE at the samples
-            d_pdf = data_pdf[idx] if data_pdf is not None else 1
-            # FIXME: does it matter that we average rather than sum?
-            prob[idx] += np.sum(self.pdf(obs) / d_pdf) / len(obs)
+            likelihood_per_samp = self.pdf(obs) / d_pdf / self.alpha
+            likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)
         # store value for multiprocessing
         if return_dict is not None:
-            return_dict[proc_idx] = prob
-        return prob
+            return_dict[proc_idx] = likelihood
+        return likelihood
 
-    def marginalize(self, params, bandwidth=_kde_bandwidth):
+    def marginalize(self, params, alpha, bandwidth=_kde_bandwidth):
         """
         Generate a new, lower dimensional, KDEModel from the parameters in [params]
         """
@@ -262,7 +271,7 @@ class KDEModel(Model):
             label += '_'+p
         label += '_marginal'
 
-        return KDEModel(label, self.samples[params], params, bandwidth, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, self.detectable_convfac, self.normalize)
+        return KDEModel(label, self.samples[params], params, bandwidth, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, alpha, self.normalize, self.detectable)
 
 
     def generate_observations(self, Nobs, uncertainty, sample_from_kde=False, sensitivity='design_network', psd_path=None, multiproc=True, verbose=False):

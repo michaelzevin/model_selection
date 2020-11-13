@@ -46,7 +46,7 @@ def get_params(df, params):
     return df
 
 
-def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, normalize=False, verbose=False, **kwargs):
+def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, normalize=False, detectable=False, **kwargs):
     """
     Call this to get all the models and submodels, as well
     as KDEs of these models, packed inside of dictionaries labelled in the
@@ -59,10 +59,6 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
     if so, will generate spin magnitudes and calculate chieff using these
     spins and the m1/m2 specified in the dataframes.
     """
-
-    # --- Read in the models, parse the inference parameters
-    if verbose:
-        print("\nReading models, applying transformations, and initializing KDEs...\n")
 
     # all models should be saved in 'file_path' in a hierarchical structure, with the channel being the top group
     f = h5py.File(file_path, "r")
@@ -94,7 +90,7 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
                     # if we are on the last level, read in data and store kdes
                     df = pd.read_hdf(file_path, key=smdl)
                     label = '/'.join(smdl_list)
-                    mdl = KDEModel.from_samples(label, df, params, sensitivity=sensitivity, normalize=normalize)
+                    mdl = KDEModel.from_samples(label, df, params, sensitivity=sensitivity, normalize=normalize, detectable=detectable)
                     current_level[part] = mdl
                 else:
                     current_level[part] = {}

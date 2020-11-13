@@ -25,27 +25,27 @@ from plot import msplot
 
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
-argp.add_argument("-f", "--file-path", type=str, required=True, help="Path to where the population models are living. Models should be stored in hdf5 format, with the channel as the base group, and model parameters as subgroups (e.g., 'CE/chi01/alpha0.5').")
-argp.add_argument("-psd", "--psd-path", type=str, required=True, help="Path to directory with PSD files, saved in same format as Observing Scenarios data release.")
-argp.add_argument("-m", "--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. When there are multiple parameters in the submodel, separate with '/' (e.g., 'chi00/alpha5'). If 'gwobs', will use the actual GW observations.")
-argp.add_argument("-gw", "--gw-path", type=str, help="Sets the path for where the GW samples are living. Necessary if model0='gwobs'. Default=None.")
-argp.add_argument("-c", "--channels", nargs="+", help="Specifies the formation channels you wish to consider in the inference. If gwobs not being used, must have the same length as the number of betas provided. If 'None', will use all channels in the hdf5 file in alphabetical order. Note that the order of betas will be interpretted in the same order as channels. Default=None.")
-argp.add_argument("-b", "--betas", nargs="*", help="Sets the branching fraction for mock observations. The number provided is the fraction of systems that come from each channel in alphabetical order. Must be set if gwobs not used. Can provide Nchannel values (which must sum to unity) or Nchannel-1 values (which must be less than 1.0, and the last branching fraction is inferred). Default=None.")
-argp.add_argument("-p", "--params", nargs="+", default="mchirp", help="Specifies the parameters you wish to use in the inference. Default=mchirp.")
-argp.add_argument("-n", "--Nobs", type=int, help="Number of mock observations to be taken from the mixture model. Must be set if gwobs not used. Default=None.")
-argp.add_argument("-N", "--Nsamps", type=int, default=100, help="Number of samples to be drawn from the posterior distributions and used to construct the KDE models. Default=100.")
+argp.add_argument("--file-path", type=str, required=True, help="Path to where the population models are living. Models should be stored in hdf5 format, with the channel as the base group, and model parameters as subgroups (e.g., 'CE/chi01/alpha0.5').")
+argp.add_argument("--psd-path", type=str, required=True, help="Path to directory with PSD files, saved in same format as Observing Scenarios data release.")
+argp.add_argument("--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. When there are multiple parameters in the submodel, separate with '/' (e.g., 'chi00/alpha5'). If 'gwobs', will use the actual GW observations.")
+argp.add_argument("--gw-path", type=str, help="Sets the path for where the GW samples are living. Necessary if model0='gwobs'. Default=None.")
+argp.add_argument("--prior", type=str, help="Sets the key for the prior weights of each GW sample. This is used to calculate p(theta), which we use to divide out the prior in the heirarchical inference. Default=None.")
+argp.add_argument("--channels", nargs="+", help="Specifies the formation channels you wish to consider in the inference. If gwobs not being used, must have the same length as the number of betas provided. If 'None', will use all channels in the hdf5 file in alphabetical order. Note that the order of betas will be interpretted in the same order as channels. Default=None.")
+argp.add_argument("--betas", nargs="*", help="Sets the branching fraction for mock observations. The number provided is the fraction of systems that come from each channel in alphabetical order. Must be set if gwobs not used. Can provide Nchannel values (which must sum to unity) or Nchannel-1 values (which must be less than 1.0, and the last branching fraction is inferred). Default=None.")
+argp.add_argument("--params", nargs="+", default="mchirp", help="Specifies the parameters you wish to use in the inference. Default=mchirp.")
+argp.add_argument("--Nobs", type=int, help="Number of mock observations to be taken from the mixture model. Must be set if gwobs not used. Default=None.")
+argp.add_argument("--Nsamps", type=int, default=100, help="Number of samples to be drawn from the posterior distributions and used to construct the KDE models. Default=100.")
 argp.add_argument("--sensitivity", type=str, help="Name of desired interferometer sensitivity. Should be consistent with the string following the `pdet` and `snropt` columns in the population dataframes. This is used to construct a detection-weighted kde, as well as for drawing samples from the underlying distributions. By default, these weights have the same name as the network sensitivity from the LVC Observing Scenarios, and have '_network' appended if using a 3-detector configuration. Default=None.")
 argp.add_argument("--uncertainty", type=str, default="delta", help="Smear out observations in a mocked up attempt at non-delta function observation posteriors. For GW obs, you can choose to smear using the actual posterior samples ('posteriors'), or from a mock gaussian with the mean and sigma of observations ('gaussian'). For mock observations, you can choose to smear according to the average spread in parameters from current GW observations ('gwevents'), or use a gaussian with an SNR-dependent sigma ('snr'). The agrument 'delta' can also be supplied for both mock observations and GW observations, in which a single sample is taken at the true value (mock observations) or median value (gwobs) of the observation. Default='delta'.")
 argp.add_argument("--spinmag", type=str, help="Define the spin magnitude distribution you wish to use. Required for using spin parameters in populations where the spin magnitude is not specified. Default is None.")
 argp.add_argument("--normalize-kde", action="store_true", help="If True, will normalize KDE to unit cube. Default is False.")
 argp.add_argument("--sample-from-kde", action="store_true", help="If True, events are drawn probabalistically from the detection-weighted KDE. Otherwise, samples drawn from the actual population models, weighted by pdet. These *should* result in similar results (modulo sampling uncertainty). Default is False.")
-argp.add_argument("--detectable-beta", action="store_true", help="If True, will assume the supplied branching fractions represent the branching fractions of *detected* events. If False, will assume the supplied branching fractions represent the branching fractions of *underlying* events. Default is False.")
 argp.add_argument("--Nobs-probabilistic", action="store_true", help="If True, will determine the number of observations to draw from each channel in a 'probabilistic' sense based on the branching fractions using random number generator. If False, do the best rounding it can based on the input branching fractions. Default is False.")
-argp.add_argument("-mp", "--multiproc", action="store_true", help="Determines whether to use multithreading for freezing samples in the KDEs and drawing samples from the underlying distribution using SNR calculations. Default is False.")
+argp.add_argument("--multiproc", action="store_true", help="Determines whether to use multithreading for freezing samples in the KDEs and drawing samples from the underlying distribution using SNR calculations. Default is False.")
 argp.add_argument("--make-plots", action="store_true", help="Determines whether to make accompanying plots. Default is False.")
-argp.add_argument("-V", "--verbose", action="store_true", help="Determines whether to be verbose in the code. Default is False.")
-argp.add_argument("-S", "--save-samples", action="store_true", help="Save all the samples rather than just the summary statistics. Default is False.")
-argp.add_argument("-rs", "--random-seed", type=int, help="Use this to set the random seed. Default=None.")
+argp.add_argument("--verbose", action="store_true", help="Determines whether to be verbose in the code. Default is False.")
+argp.add_argument("--save-samples", action="store_true", help="Save all the samples rather than just the summary statistics. Default is False.")
+argp.add_argument("--random-seed", type=int, help="Use this to set the random seed. Default=None.")
 argp.add_argument("--name", type=str, help="Use this as the stem for all file output. Default=None.")
 args = argp.parse_args()
 
@@ -68,12 +68,19 @@ def setInDict(dataDict, mapList, value):
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
 
 # --- Load in models/kdemodels into dict structure: models[model][channel]
+# Construct both "underlying" KDE models (anything that has Pdet>0) and "detectable" KDE models
 # `normalize` argument normalizes KDEs on unit cube
-model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, verbose=verbose)
+if verbose:
+    print("\nReading models, applying transformations, and initializing underlying KDEs...\n")
+model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, detectable=False)
+if verbose:
+    print("\nReading models, applying transformations, and initializing detectable KDEs...\n")
+_, kde_models_detectable = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, detectable=True)
 model_names.sort()
 params = args.params
 hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
 Nhyper = np.max([len(x.split('/')) for x in hyperparams])
+
 
 # check that betas are provided if gwobs not specified, check betas, and sort channels and betas consistently
 if not gwobs:
@@ -168,6 +175,9 @@ else:
 if args.uncertainty=='delta' and args.Nsamps>1:
     warnings.warn("You specified delta-function observations but asked for more than one sample, only one sample will be used for each observations!\n")
 
+# If 'prior' is specified, ensure that we are using (and drawing) posterior samples for GW events
+if args.prior and args.model0 is not 'gwobs' and args.uncertainty not in ['delta','posteriors']:
+    warnings.warn("If you want to supply a key for the prior weights, you need to be using GW observations, and you need to be drawing the posterior samples with either the 'delta' or 'posteriors' method!\n")
 
 
 # --- If model0 specified, store KDE models in `model0` dict and save relative fractions
@@ -177,7 +187,7 @@ if not gwobs:
 
     # since channels are sorted alphabetically, branching fractions are defined in the same order
     model0 = {}
-    detectable_convfacs_model0 = []
+    model0_detectable = {}
     for idx, channel in enumerate(channels):
         channel_mdls = [x for x in model_names if channel+'/' in x]
         for model in channel_mdls:
@@ -185,29 +195,19 @@ if not gwobs:
             # print info about model0
             if (smdl in args.model0):
                 model0[channel] = getFromDict(kde_models, model.split('/'))
-                detectable_convfacs_model0.append(model0[channel].detectable_convfac)
-
-    # determine whether supplied branching fractions are for the detectable or the underlying population
-    if args.detectable_beta==True:
-        detectable_betas = np.asarray(betas)
-        underlying_betas = np.asarray(betas) / np.asarray(detectable_convfacs_model0)
-        underlying_betas /= np.sum(underlying_betas)
-    elif args.detectable_beta==False:
-        detectable_betas = np.asarray(betas) * np.asarray(detectable_convfacs_model0)
-        detectable_betas /= np.sum(detectable_betas)
-        underlying_betas = np.asarray(betas)
+                model0_detectable[channel] = getFromDict(kde_models_detectable, model.split('/'))
 
     # set branching fractions as attributes in KDEModels
     for idx, channel in enumerate(channels):
-        model0[channel].rel_frac(detectable_betas[idx])
-        model0[channel].underlying_frac(underlying_betas[idx])
+        model0[channel].rel_frac(betas[idx])
+        model0_detectable[channel].rel_frac(betas[idx])
 
     # print model0 info
     if verbose:
         print("'{0:s}' set as true model".format(args.model0))
         print("  model ranges:")
         for channel, mdl in model0.items():
-            print("    {0:s} (beta={1:0.4f}, det_frac={2:0.4f})".format(channel, mdl.underlying_frac, mdl.rel_frac))
+            print("    {0:s} (beta={1:0.2f})".format(channel, mdl.rel_frac))
             for param in args.params:
                 print("      {0:s}: {1:0.3f} - {2:0.3f}".format(param,\
                         mdl.sample_range[param][0], mdl.sample_range[param][1]))
@@ -221,8 +221,8 @@ if verbose:
 # Calls gw_obs.py to generate samples if argument is passed
 if gwobs:
     model0=None
-    observations, obsdata, events = gw_obs.generate_observations(params, args.gw_path, \
-                                            args.Nsamps, args.uncertainty)
+    observations, obsdata, p_theta, events = gw_obs.generate_observations(params, args.gw_path, \
+                                            args.Nsamps, args.uncertainty, args.prior)
     if verbose:
         print("Using the following {0:d} GW observations for inference:".format(len(events)))
         print(*events, sep=', ')
@@ -230,10 +230,7 @@ if gwobs:
 
 else:
     if verbose:
-        if args.detectable_beta:
-            print("Drawing {0:d} observations from model0, assuming that the branching fractions represent the *detectable* distribution, and using the '{1:s}' method for measurement uncertainty...".format(int(args.Nobs), args.uncertainty))
-        else:
-            print("Drawing {0:d} observations from model0, assuming that the branching fractions represent the *underlying* distribution, and using the '{1:s}' method for measurement uncertainty...".format(int(args.Nobs), args.uncertainty))
+        print("Drawing {0:d} observations from model0, assuming that the branching fractions represent the *underlying* distribution, and using the '{1:s}' method for measurement uncertainty...".format(int(args.Nobs), args.uncertainty))
     rand_vars = np.random.random(size=args.Nobs)
     randlow_hold = 0
     for idx, channel in enumerate(model0):
@@ -244,8 +241,7 @@ else:
         elif args.Nobs_probabilistic==False:
             # first check that the branching fractions * Nobs are integers
             if not (args.Nobs*model0[channel].rel_frac).is_integer():
-                if args.detectable_beta==True:
-                    warnings.warn("Number of observations is not divisble by detectable branching fractions provided, this may result in drawing a number of samples slighty different than what was specified!\n")
+                warnings.warn("Number of observations is not divisble by detectable branching fractions provided, this may result in drawing a number of samples slighty different than what was specified!\n")
             Nobs_per_channel = int(np.round(args.Nobs * model0[channel].rel_frac))
         # add attribute for number of observations drawn
         model0[channel].Nobs_from_beta(Nobs_per_channel)
@@ -263,7 +259,8 @@ else:
             obsdata = np.concatenate((obsdata, \
                 model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True, verbose=verbose)))
-
+    # assume equal prior weight for each posterior sample
+    p_theta = np.ones((obsdata.shape[0],obsdata.shape[1]))
 
 # Plot the KDEs and observations
 if make_plots==True:
@@ -273,10 +270,11 @@ if make_plots==True:
         fixed_vals = [args.model0.split('/')[-1]]
     else:
         fixed_vals = ['alpha10']
-    msplot.plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, \
+    msplot.plot_1D_kdemodels(model_names, kde_models_detectable, params, observations, obsdata, \
            model0, name=args.name, fixed_vals=fixed_vals, plot_obs=True, plot_obs_samples=False)
     if verbose:
         print("")
+
 
 
 # --- Freeze sample evaluations in each model. 
@@ -289,7 +287,7 @@ if verbose:
 for model in model_names:
     if verbose:
         print("  {0:s}".format(model))
-    getFromDict(kde_models, model.split('/')).freeze(obsdata, multiproc=args.multiproc)
+    getFromDict(kde_models, model.split('/')).freeze(obsdata, data_pdf=p_theta, multiproc=args.multiproc)
 if verbose:
     print("Done freezing KDE evaluations of observations!\n")
 
@@ -344,14 +342,14 @@ lnprb = lnprb.reshape((lnprb.shape[0] * lnprb.shape[1]))
 
 # Get samples for both *detectable* branching fractions and *underlying* branching fractions
 if verbose:
-    print("Converting detectable betas from sampler to underlying betas...\n")
-underlying_samples = samples.copy()
+    print("Converting underlying betas from sampler to detectable betas...\n")
+detectable_samples = samples.copy()
 smdls = list(set([x.split('/',1)[1] for x in model_names]))
 # get the conversion factors between the detectable and underlying distributions
 for smdl in sorted(smdls):
     detectable_convfacs = []
     for channel in channels:
-        detectable_convfacs.append(getFromDict(kde_models, [channel]+smdl.split('/')).detectable_convfac)
+        detectable_convfacs.append(getFromDict(kde_models, [channel]+smdl.split('/')).alpha)
     detectable_convfacs = np.asarray(detectable_convfacs)
     # loop over hyperparams to get samples in this submodel
     hyperparams = smdl.split('/')
@@ -363,23 +361,21 @@ for smdl in sorted(smdls):
         else:
             matching_idxs = matching_idxs[np.where(matching_samps[:,idx] == hyper_idx)[0]]
             matching_samps = samples[matching_idxs]
-    # if no sample are in this model, continue
+    # if no samples are in this model, continue
     if len(matching_idxs)==0:
         continue
     # convert hyperparams of these samples accordingly to get the underlying betas
-    converted_betas = underlying_samples[matching_idxs,len(hyperparams):] / detectable_convfacs
+    converted_betas = detectable_samples[matching_idxs,len(hyperparams):] * detectable_convfacs
     converted_betas /= converted_betas.sum(axis=1, keepdims=True)
-    underlying_samples[matching_idxs,len(hyperparams):] = converted_betas
+    detectable_samples[matching_idxs,len(hyperparams):] = converted_betas
 
-
-# Plot samples and histograms of betas per model
-if make_plots==True:
-    if verbose:
-        print("Plotting samples...\n")
-    for hyper_idx in list(submodels_dict.keys()):
-        # Need samples back in their original shape (separated by chains)
-        msplot.plot_samples(samples.reshape(original_shape), submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx, detectable_beta=True)
-        msplot.plot_samples(underlying_samples.reshape(original_shape), submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx, detectable_beta=False)
+    # save converted relative fractions to model0
+    if smdl==args.model0:
+        converted_rel_fracs = betas * detectable_convfacs
+        converted_rel_fracs /= np.sum(converted_rel_fracs)
+        for cidx, channel in enumerate(channels):
+            model0[channel].rel_frac_detectable(converted_rel_fracs[cidx])
+            model0_detectable[channel].rel_frac_detectable(converted_rel_fracs[cidx])
 
 
 # --- Print summary info about the sampling
@@ -395,39 +391,49 @@ if verbose:
             hyper_idx = list(submodels_dict[idx].keys())[list(submodels_dict[idx].values()).index(param)]
             if idx==0:
                 matching_samps = samples[samples[:,idx] == hyper_idx]
-                matching_samps_underlying = underlying_samples[underlying_samples[:,idx] == hyper_idx]
+                matching_samps_detectable = detectable_samples[detectable_samples[:,idx] == hyper_idx]
             else:
                 matching_samps = matching_samps[matching_samps[:,idx] == hyper_idx]
-                matching_samps_underlying = matching_samps_underlying[matching_samps_underlying[:,idx] == hyper_idx]
+                matching_samps_detectable = matching_samps_detectable[matching_samps_detectable[:,idx] == hyper_idx]
         # get counts in this model
         counts = matching_samps.shape[0]
         recovered_vals[smdl]['counts'] = counts
         # get betas for this model from each channel
         recovered_vals[smdl]['betas'] = {}
-        recovered_vals[smdl]['betas_underlying'] = {}
+        recovered_vals[smdl]['betas_detectable'] = {}
         for cidx, channel in enumerate(channels):
             # append beta values for this model
             if counts > 0:
                 beta = matching_samps[:,Nhyper+cidx]
                 beta = round(np.mean(beta), 3)
-                beta_underlying = matching_samps_underlying[:,Nhyper+cidx]
-                beta_underlying = round(np.mean(beta_underlying), 3)
+                beta_detectable = matching_samps_detectable[:,Nhyper+cidx]
+                beta_detectable = round(np.mean(beta_detectable), 3)
             else:
                 beta = np.nan
-                beta_underlying = np.nan
+                beta_detectable = np.nan
             recovered_vals[smdl]['betas'][channel] = beta
-            recovered_vals[smdl]['betas_underlying'][channel] = beta_underlying
+            recovered_vals[smdl]['betas_detectable'][channel] = beta_detectable
 
     # print everything
     for smdl in sorted(smdls):
         sample_counts = recovered_vals[smdl]['counts']
         sample_betas = recovered_vals[smdl]['betas']
-        sample_betas_underlying = recovered_vals[smdl]['betas_underlying']
+        sample_betas_detectable = recovered_vals[smdl]['betas_detectable']
         print("  Model {0:s}".format(smdl))
         print("     {0:d} samples".format(sample_counts))
-        print("     underlying betas={0}".format(list(sample_betas_underlying.items())))
-        print("     detectable betas={0}".format(list(sample_betas.items())))
+        print("     betas={0}".format(list(sample_betas.items())))
+        print("     detectable betas={0}".format(list(sample_betas_detectable.items())))
     print("")
+
+
+# Plot samples and histograms of betas per model
+if make_plots==True:
+    if verbose:
+        print("Plotting samples...\n")
+    for hyper_idx in list(submodels_dict.keys()):
+        # Need samples back in their original shape (separated by chains)
+        msplot.plot_samples(samples.reshape(original_shape), submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx, detectable_beta=False)
+        msplot.plot_samples(detectable_samples.reshape(original_shape), submodels_dict, model_names, channels, model0, name=args.name, hyper_idx=hyper_idx, detectable_beta=True)
 
 
 # --- Save samples
@@ -488,7 +494,7 @@ if args.save_samples:
     df = pd.DataFrame(raw_samples, columns=columns).astype(convert_dict)
     df.to_hdf(fname, key='model_selection/raw_samples')
 
-    # save underlying samples as dataframe
+    # save detectable samples as dataframe
     columns = []
     convert_dict = {}
     for hyper_idx in submodels_dict.keys():
@@ -497,8 +503,8 @@ if args.save_samples:
         convert_dict['p'+str(hyper_idx)] = int
     for channel in channels:
         columns.append('beta_'+channel)
-    df = pd.DataFrame(underlying_samples, columns=columns).astype(convert_dict)
-    df.to_hdf(fname, key='model_selection/underlying_samples')
+    df = pd.DataFrame(detectable_samples, columns=columns).astype(convert_dict)
+    df.to_hdf(fname, key='model_selection/detectable_samples')
 
     # save sample probabilities as dataframe
     df = pd.DataFrame(lnprb, columns=['lnprb'])
