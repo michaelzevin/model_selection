@@ -21,8 +21,8 @@ plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 
 _param_bounds = {"mchirp": (0,75), "q": (0.25,1), "chieff": (-0.5,1), "z": (0,1)}
 _param_ticks = {"mchirp": [0,25,50,75], "q": [0.25,0.5,0.75,1], "chieff": [-0.5,0,0.5,1], "z": [0,0.25,0.5,0.75,1.0]}
-_pdf_bounds = {"mchirp": (0,0.09), "q": (0,32), "chieff": (0,13), "z": (0,4)}
-_pdf_ticks = {"mchirp": [0.0,0.025,0.050,0.075], "q": [0,10,20,30], "chieff": [0,3,6,9,12], "z": (0,1,2,3,4)}
+_pdf_bounds = {"mchirp": (0,0.11), "q": (0,32), "chieff": (0,22), "z": (0,4)}
+_pdf_ticks = {"mchirp": [0.0,0.025,0.050,0.075,0.10], "q": [0,10,20,30], "chieff": [0,5,10,15,20], "z": (0,1,2,3,4)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [$M_{\odot}$]", "q": r"$q$", \
 "chieff": r"$\chi_{\rm eff}$", "z": r"$z$", "chi00": r"$\chi_\mathrm{b}=0.0$", \
 "chi01": r"$\chi_\mathrm{b}=0.1$", "chi02": r"$\chi_\mathrm{b}=0.2$", \
@@ -32,7 +32,7 @@ _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [$M_{\odot}$]", "q": r"$q$", \
 "CE": r"$\texttt{CE}$", "CHE": r"$\texttt{CHE}$", "GC": r"$\texttt{GC}$", \
 "NSC": r"$\texttt{NSC}$", "SMT": r"$\texttt{SMT}$"}
 _Nsamps = 100000
-_marg_kde_bandwidth = 0.02
+_marg_kde_bandwidth = 0.01
 
 # --- Useful functions for accessing items in dictionary
 def getFromDict(dataDict, mapList):

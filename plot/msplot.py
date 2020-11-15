@@ -30,7 +30,7 @@ _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [M$_{\odot}$]", "q": r"q", \
 "alpha05": r"$\alpha_\mathrm{CE}=0.5$", "alpha10": r"$\alpha_\mathrm{CE}=1.0$", \
 "alpha20": r"$\alpha_\mathrm{CE}=2.0$", "alpha50": r"$\alpha_\mathrm{CE}=5.0$"}
 _Nsamps = 100000
-_marg_kde_bandwidth = 0.02
+_marg_kde_bandwidth = 0.01
 
 # --- Useful functions for accessing items in dictionary
 def getFromDict(dataDict, mapList):
