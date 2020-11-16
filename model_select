@@ -262,6 +262,14 @@ else:
     # assume equal prior weight for each posterior sample
     p_theta = np.ones((obsdata.shape[0],obsdata.shape[1]))
 
+# plot for paper (uncomment if generating)
+#print("\nPlotting marginalized KDE models...")
+#from plot import plot_for_paper
+#observations, obsdata, p_theta, events = gw_obs.generate_observations(params, args.gw_path, args.Nsamps, 'delta')
+#fixed_vals = ['alpha10']
+#plot_for_paper.plot_1D_kdemodels(model_names, kde_models_detectable, params, observations, obsdata, events, model0, name=args.name, fixed_vals=fixed_vals, plot_obs=True, plot_obs_samples=False)
+#exit()
+
 # Plot the KDEs and observations
 if make_plots==True:
     if verbose==True:

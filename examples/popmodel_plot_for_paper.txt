@@ -1,9 +1,0 @@
-# Add this code right before the KDE models are plotted!
-
-# plot for paper
-print("\nPlotting marginalized KDE models...")
-from plot import plot_for_paper
-observations, obsdata, events, args.prior = gw_obs.generate_observations(params, args.gw_path, args.Nsamps, 'delta')
-fixed_vals = ['alpha10']
-plot_for_paper.plot_1D_kdemodels(model_names, kde_models_detectable, params, observations, obsdata, model0, name=args.name, fixed_vals=fixed_vals, plot_obs=True, plot_obs_samples=False)
-exit()
