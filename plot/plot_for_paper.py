@@ -21,8 +21,8 @@ plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 
 _param_bounds = {"mchirp": (0,75), "q": (0.25,1), "chieff": (-0.5,1), "z": (0,1)}
 _param_ticks = {"mchirp": [0,25,50,75], "q": [0.25,0.5,0.75,1], "chieff": [-0.5,0,0.5,1], "z": [0,0.25,0.5,0.75,1.0]}
-_pdf_bounds = {"mchirp": (0,0.11), "q": (0,32), "chieff": (0,22), "z": (0,4)}
-_pdf_ticks = {"mchirp": [0.0,0.025,0.050,0.075,0.10], "q": [0,10,20,30], "chieff": [0,5,10,15,20], "z": (0,1,2,3,4)}
+_pdf_bounds = {"mchirp": (0,0.1), "q": (0,32), "chieff": (0,17), "z": (0,4)}
+_pdf_ticks = {"mchirp": [0.0,0.025,0.050,0.075,0.10], "q": [0,10,20,30], "chieff": [0,4,8,12,16], "z": (0,1,2,3,4)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [$M_{\odot}$]", "q": r"$q$", \
 "chieff": r"$\chi_{\rm eff}$", "z": r"$z$", "chi00": r"$\chi_\mathrm{b}=0.0$", \
 "chi01": r"$\chi_\mathrm{b}=0.1$", "chi02": r"$\chi_\mathrm{b}=0.2$", \
@@ -32,7 +32,7 @@ _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [$M_{\odot}$]", "q": r"$q$", \
 "CE": r"$\texttt{CE}$", "CHE": r"$\texttt{CHE}$", "GC": r"$\texttt{GC}$", \
 "NSC": r"$\texttt{NSC}$", "SMT": r"$\texttt{SMT}$"}
 _Nsamps = 100000
-_marg_kde_bandwidth = 0.01
+_marg_kde_bandwidths = {'mchirp':0.02, 'q':0.02, 'chieff':0.015, 'z':0.004}
 
 # --- Useful functions for accessing items in dictionary
 def getFromDict(dataDict, mapList):
@@ -41,7 +41,7 @@ def setInDict(dataDict, mapList, value):
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
 
 
-def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, model0, name=None, fixed_vals=[], plot_obs=False, plot_obs_samples=False):
+def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, events, model0, name=None, fixed_vals=[], plot_obs=False, plot_obs_samples=False):
     """
     Plots all the KDEs for each channel in each model, as well as the *true* model described by the input branching fraction.
     If more than one population parameter is being considered, specify in list 'fixed_vals' (e.g., ['alpha10']).
@@ -85,7 +85,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
 
                 # marginalize the kde (this redoes the KDE in 1D)
                 # make sure to set alpha=1 so each channel is evenly weighted in plot
-                marg_kde = kde.marginalize([param], alpha=1, bandwidth=_marg_kde_bandwidth)
+                marg_kde = kde.marginalize([param], alpha=1, bandwidth=_marg_kde_bandwidths[param])
 
                 # evaluate the marginalized kde over the param range
                 eval_pts = np.linspace(*_param_bounds[param], 100)
@@ -154,7 +154,7 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
             # construct combined KDE model and plot
             if model0:
                 combined_samples = pd.DataFrame(model0_samples[:,pidx].flatten(), columns=[param])
-                combined_kde = KDEModel.from_samples('combined_kde', combined_samples, [param], weighting=None, bandwidth=_marg_kde_bandwidth)
+                combined_kde = KDEModel.from_samples('combined_kde', combined_samples, [param], weighting=None, bandwidth=_marg_kde_bandwidths[param])
                 eval_pts = np.linspace(*_param_bounds[param], 100)
                 eval_pts = eval_pts.reshape(100,1,1)
                 pdf = combined_kde(eval_pts)
@@ -164,10 +164,12 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, mo
             # plot the observations, if specified
             y_max = ax.get_ylim()[1]
             if plot_obs:
-                for obs in observations:
+                for obs, event in zip(observations, events):
                     # delta function observations
-                    ax.axvline(obs[pidx], ymax=0.1, color='k', \
-                                                alpha=0.4, zorder=-10)
+                    if event=='GW190521':
+                        ax.axvline(obs[pidx], ymax=0.1, color='r', alpha=0.4, zorder=-10)
+                    else:
+                        ax.axvline(obs[pidx], ymax=0.1, color='k', alpha=0.4, zorder=-10)
 
             if plot_obs_samples:
                 for obs in obsdata:
