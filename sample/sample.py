@@ -178,6 +178,9 @@ def lnlike(x, data, kde_models, submodels_dict, channels):
     # Likelihood
     prob = np.zeros(data.shape[0])
 
+    # Detection effiency for this hypermodel
+    alpha = 0
+
     # Iterate over channels in this submodel, return cached values
     for channel, beta in zip(channels, betas_tmp):
         model_list_tmp = model_list.copy()
@@ -185,8 +188,9 @@ def lnlike(x, data, kde_models, submodels_dict, channels):
         smdl = reduce(operator.getitem, model_list_tmp, kde_models)
         # add contribution from this channel
         prob += beta * smdl(data)
+        alpha += beta * smdl.alpha
 
-    return np.log(prob).sum()
+    return np.log(prob/alpha).sum()
 
 
 def lnpost(x, data, kde_models, submodels_dict, channels, _concentration):

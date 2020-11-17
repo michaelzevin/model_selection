@@ -255,7 +255,7 @@ class KDEModel(Model):
         data_pdf[data_pdf==0] = 1e-50
         for idx, (obs, d_pdf) in enumerate(zip(np.atleast_3d(data),data_pdf)):
             # Evaluate the KDE at the samples
-            likelihood_per_samp = self.pdf(obs) / d_pdf / self.alpha
+            likelihood_per_samp = self.pdf(obs) / d_pdf
             likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)
         # store value for multiprocessing
         if return_dict is not None:
