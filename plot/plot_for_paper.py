@@ -192,5 +192,5 @@ def plot_1D_kdemodels(model_names, kde_models, params, observations, obsdata, ev
 
     plt.subplots_adjust(right=0.97, bottom=0.08)
     fname = '/Users/michaelzevin/research/model_selection/model_selection/paper/figures/pop_models.png'
-    plt.savefig(fname)
+    plt.savefig(fname, dpi=200)
     plt.close()
