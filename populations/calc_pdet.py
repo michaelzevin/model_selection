@@ -109,6 +109,6 @@ for model in models:
         pop['snropt_'+name] = results[:,1]
 
     # save pop model
-    pop.to_hdf(args.ouput_path, key=model, mode='a')
+    pop.to_hdf(args.output_path, key=model, mode='a')
 
 
