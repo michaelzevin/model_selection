@@ -39,7 +39,7 @@ _PSDs_for_pdet = ['midhighlatelow_network']
 ### Argument handling
 argp = argparse.ArgumentParser()
 argp.add_argument("--input-path", type=str, required=True, help="Path to population models that need detection weights. These should be stored in a hdf5 file with the following hierarchical structure: channel/param0/param1...")
-argp.add_argument("--output-path", type=str, required=True, help="Path to output population models that include detection weights. ")
+argp.add_argument("--output-path", type=str, required=True, help="Path to output population models that include detection weights.")
 argp.add_argument("--psd-path", type=str, required=True, help="Path to directory with PSD files, saved in same format as Observing Scenarios data release.")
 argp.add_argument("--model", type=str, default=None, help="HDF key for the model you wish to run selection effects on. If None, will run for all models the file.")
 argp.add_argument("--Ntrials", type=int, default=1000, help="Define the number of monte carlo trails used for calculating the average SNR. Default=1000")
