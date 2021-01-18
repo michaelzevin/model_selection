@@ -19,8 +19,8 @@ cp = [colors[0], colors[2], colors[4], colors[1], colors[3], colors[6], colors[9
 _basepath, _ = os.path.split(os.path.realpath(__file__))
 plt.style.use(_basepath+"/.MATPLOTLIB_RCPARAMS.sty")
 
-_param_bounds = {"mchirp": (0,70), "q": (0.25,1), "chieff": (-0.5,1), "z": (0,1)}
-_param_ticks = {"mchirp": [0,10,20,30,40,50,60,70], "q": [0.25,0.5,0.75,1], "chieff": [-0.5,0,0.5,1], "z": [0,0.25,0.5,0.75,1.0]}
+_param_bounds = {"mchirp": (0,70), "q": (0.25,1), "chieff": (-0.5,1), "z": (0,1.25)}
+_param_ticks = {"mchirp": [0,10,20,30,40,50,60,70], "q": [0.25,0.5,0.75,1], "chieff": [-0.5,0,0.5,1], "z": [0,0.25,0.5,0.75,1.0,1.25]}
 _pdf_bounds = {"mchirp": (0,0.075), "q": (0,32), "chieff": (0,17), "z": (0,4)}
 _pdf_ticks = {"mchirp": [0.0,0.025,0.050,0.075], "q": [0,10,20,30], "chieff": [0,4,8,12,16], "z": (0,1,2,3,4)}
 _labels_dict = {"mchirp": r"$\mathcal{M}_{\rm c}$ [$M_{\odot}$]", "q": r"$q$", \
