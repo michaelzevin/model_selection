@@ -329,5 +329,5 @@ _PSD_defaults = {
             "L1":"design",
             "V1":"design"},
     "snr_single": 8,
-    "snr_network": 12}
+    "snr_network": 10}
 
