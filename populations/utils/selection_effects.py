@@ -50,7 +50,7 @@ def get_waveform(m1, m2, z, s1=None, s2=None, vary_params=False, **kwargs):
     approx = lalsimulation.GetApproximantFromString(kwargs["approx"] if "approx" in kwargs else "IMRPhenomPv2")
 
     # read distance
-    distance = cosmology.Planck15.luminosity_distance(z).value * u.Mpc.to(u.m)
+    distance = cosmo.luminosity_distance(z).value * u.Mpc.to(u.m)
 
     if vary_params:
         ra, dec = np.random.uniform(0, 2*np.pi), np.arcsin(np.random.uniform(-1, 1))
