@@ -20,7 +20,7 @@ from .utils.transform import mchirpq_to_m1m2, mtotq_to_m1m2, mtoteta_to_m1m2, ch
 from astropy import cosmology
 from astropy.cosmology import z_at_value
 import astropy.units as u
-cosmo = cosmology.Planck15
+cosmo = cosmology.Planck18
 
 # Need to ensure all parameters are normalized over the same range
 _param_bounds = {"mchirp": (0,100), "q": (0,1), "chieff": (-1,1), "z": (0,10)}

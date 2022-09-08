@@ -16,7 +16,7 @@ from astropy.cosmology import z_at_value
 import lal, lalsimulation
 from pycbc.detector import Detector
 
-cosmo = cosmology.Planck15
+cosmo = cosmology.Planck18
 
 
 # --- Useful functions --- #

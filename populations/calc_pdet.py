@@ -28,7 +28,7 @@ from pycbc.detector import Detector
 
 from utils import selection_effects
 
-cosmo = cosmology.Planck15
+cosmo = cosmology.Planck18
 
 ### Specify PSD information
 _PSD_defaults = selection_effects._PSD_defaults

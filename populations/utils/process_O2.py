@@ -3,7 +3,7 @@
 import os
 import numpy as np
 import pandas as pd
-from astropy.cosmology import Planck15, z_at_value
+from astropy.cosmology import Planck18, z_at_value
 import astropy.units as u
 
 
@@ -12,7 +12,7 @@ _path = "/Users/michaelzevin/research/ligo/O2/PE/GWTC-1_sample_release/"
 _events = ["GW150914","GW151012","GW151226","GW170104","GW170608","GW170729","GW170809","GW170814","GW170818","GW170823"]
 
 # initialize cosmology
-cosmo = Planck15
+cosmo = Planck18
 
 def calc_redshift(D):
     return z_at_value(cosmo.luminosity_distance, D*u.Mpc)

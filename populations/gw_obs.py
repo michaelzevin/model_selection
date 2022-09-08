@@ -6,7 +6,7 @@ from tqdm import tqdm
 import astropy.units as u
 from astropy import cosmology
 from astropy.cosmology import z_at_value
-cosmo = cosmology.Planck15
+cosmo = cosmology.Planck18
 
 from . import *
 
