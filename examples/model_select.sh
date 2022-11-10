@@ -10,8 +10,8 @@ params="mchirp q chieff z"
 
 source activate modelselect-py37
 
-python /Users/michaelzevin/research/github/model_selection/model_selection/model_select \
---file-path /Users/michaelzevin/research/model_selection/model_selection/data/spin_models/models_reduced.hdf5 \
+python /Users/michaelzevin/research/git/model_selection/model_selection/model_select \
+--file-path /Users/michaelzevin/research/model_selection/gwtc2/data/spin_models/models_reduced.hdf5 \
 --psd-path '/Users/michaelzevin/research/ligo/PSDs/' \
 --gw-path '/Users/michaelzevin/research/model_selection/model_selection/data/gw_events/' \
 --model0 ${model0} \
