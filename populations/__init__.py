@@ -92,7 +92,7 @@ class KDEModel(Model):
             pdets = np.ones(len(samples))
 
         # get samples for the parameters in question
-        kde_samples = samples[params]
+        kde_samples = pd.DataFrame(samples[params])
 
         # get optimal SNRs for this sensitivity
         if sensitivity is not None:
@@ -274,7 +274,7 @@ class KDEModel(Model):
         return KDEModel(label, self.samples[params], params, bandwidth, self.cosmo_weights, self.sensitivity, self.pdets, self.optimal_snrs, alpha, self.normalize, self.detectable)
 
 
-    def generate_observations(self, Nobs, uncertainty, sample_from_kde=False, sensitivity='design_network', psd_path=None, multiproc=True, verbose=False):
+    def generate_observations(self, Nobs, uncertainty, sample_from_kde=False, sensitivity='design_network', multiproc=True, verbose=False):
         """
         Generates samples from KDE model. This will generated Nobs samples, storing the attribute 'self.observations' with dimensions [Nobs x Nparam]. 
         """

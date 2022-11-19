@@ -26,7 +26,6 @@ from plot import msplot
 # --- Argument handling --- #
 argp = argparse.ArgumentParser()
 argp.add_argument("--file-path", type=str, required=True, help="Path to where the population models are living. Models should be stored in hdf5 format, with the channel as the base group, and model parameters as subgroups (e.g., 'CE/chi01/alpha0.5').")
-argp.add_argument("--psd-path", type=str, required=True, help="Path to directory with PSD files, saved in same format as Observing Scenarios data release.")
 argp.add_argument("--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. When there are multiple parameters in the submodel, separate with '/' (e.g., 'chi00/alpha5'). If 'gwobs', will use the actual GW observations.")
 argp.add_argument("--gw-path", type=str, help="Sets the path for where the GW samples are living. Necessary if model0='gwobs'. Default=None.")
 argp.add_argument("--prior", type=str, help="Sets the key for the prior weights of each GW sample. This is used to calculate p(theta), which we use to divide out the prior in the heirarchical inference. Default=None.")
@@ -70,6 +69,7 @@ def setInDict(dataDict, mapList, value):
 # --- Load in models/kdemodels into dict structure: models[model][channel]
 # Construct both "underlying" KDE models (anything that has Pdet>0) and "detectable" KDE models
 # `normalize` argument normalizes KDEs on unit cube
+params = list(np.asarray(args.params).flatten())
 if verbose:
     print("\nReading models, applying transformations, and initializing underlying KDEs...\n")
 model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, detectable=False)
@@ -77,7 +77,6 @@ if verbose:
     print("\nReading models, applying transformations, and initializing detectable KDEs...\n")
 _, kde_models_detectable = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, detectable=True)
 model_names.sort()
-params = args.params
 hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
 Nhyper = np.max([len(x.split('/')) for x in hyperparams])
 
@@ -248,14 +247,14 @@ else:
         if idx==0:
             observations = model0[channel].generate_observations(Nobs_per_channel, args.uncertainty,\
                 sample_from_kde=args.sample_from_kde, sensitivity=args.sensitivity, \
-                psd_path=args.psd_path, multiproc=args.multiproc, verbose=verbose)
+                multiproc=args.multiproc, verbose=verbose)
             obsdata = model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True, verbose=verbose)
         else:
             observations = np.concatenate((observations, \
                 model0[channel].generate_observations(Nobs_per_channel, args.uncertainty, \
                 sample_from_kde=args.sample_from_kde, sensitivity=args.sensitivity, \
-                psd_path=args.psd_path, multiproc=args.multiproc, verbose=verbose)))
+                multiproc=args.multiproc, verbose=verbose)))
             obsdata = np.concatenate((obsdata, \
                 model0[channel].measurement_uncertainty(args.Nsamps, \
                 args.uncertainty, observation_noise=True, verbose=verbose)))
