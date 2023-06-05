@@ -46,7 +46,7 @@ class Sampler(object):
                 submodels_dict[ctr][idx] = model
             ctr += 1
 
-        # note that ndim is (Nchannels-1) + Nhyper for the model indices
+        # note that ndim is (Nchannels-1) + Nhyper for the model indices -- branching fractions minus 1 plus number of hyperparams
         ndim = (len(channels)-1) + Nhyper
 
         # store as attributes
@@ -97,6 +97,7 @@ posteriors!".format(self.posterior_name))
         """
 
         # --- Set up initial point for the walkers
+            #ndim encompasses the population hyperparameters and the branching fractions between channels
         p0 = np.empty(shape=(self.nwalkers, self.ndim))
 
         # first, for the population hyperparameters
@@ -108,11 +109,11 @@ posteriors!".format(self.posterior_name))
         p0[:,self.Nhyper:] = beta_p0[:,:-1]
 
         # --- Do the sampling
-        posterior_args = [obsdata, kde_models, self.submodels_dict, self.channels, _concentration]
+        posterior_args = [obsdata, kde_models, self.submodels_dict, self.channels, _concentration] #these are arguments to pass to self.posterior
         if verbose:
             print("Sampling...")
-        sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, args=posterior_args)
-        for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)):
+        sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, args=posterior_args) #calls emcee sampler with self.posterior as probability function
+        for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)): #this do anything if not verbose?
             if verbose:
                 if (idx+1) % (self.nsteps/200) == 0:
                     sys.stderr.write("\r  {0}% (N={1})".\
@@ -120,7 +121,7 @@ posteriors!".format(self.posterior_name))
         if verbose:
             print("\nSampling complete!\n")
 
-        # remove the burnin
+        # remove the burnin -- whats this?
         burnin_steps = int(self.nsteps * self.fburnin)
         self.Nsteps_final = self.nsteps - burnin_steps
         samples = sampler.chain[:,burnin_steps:,:]
@@ -162,7 +163,7 @@ def lnp(x, submodels_dict, _concentration):
     return dirichlet.logpdf(betas_tmp, _concentration)
 
 
-def lnlike(x, data, kde_models, submodels_dict, channels):
+def lnlike(x, data, kde_models, submodels_dict, channels): #data here is obsdata previously, and x is the point in log hyperparam space
     """
     Log of the likelihood. 
     Selects on model, then tests beta.
@@ -181,12 +182,13 @@ def lnlike(x, data, kde_models, submodels_dict, channels):
     # Detection effiency for this hypermodel
     alpha = 0
 
-    # Iterate over channels in this submodel, return cached values
+    # Iterate over channels in this submodel, return cached values of likelihood in 4d KDE
     for channel, beta in zip(channels, betas_tmp):
         model_list_tmp = model_list.copy()
         model_list_tmp.insert(0,channel)
-        smdl = reduce(operator.getitem, model_list_tmp, kde_models)
+        smdl = reduce(operator.getitem, model_list_tmp, kde_models) #grabs correct submodel
         # add contribution from this channel
+        #I think this is what calls KDEModels __call__(data) to return likelihood.
         prob += beta * smdl(data)
         alpha += beta * smdl.alpha
 
@@ -206,7 +208,7 @@ def lnpost(x, data, kde_models, submodels_dict, channels, _concentration):
     # Likelihood
     log_like = lnlike(x, data, kde_models, submodels_dict, channels)
 
-    return log_like + log_prior
+    return log_like + log_prior #bayes thm? don't need evidence factor?
 
 
 

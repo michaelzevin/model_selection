@@ -80,10 +80,13 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
         deepest_models = deepest_models_cut
 
     # Save all KDE models as pandas dataframes in dict structure
+
+    # TO CHANGE -- get likelihood model. instead of KDEmodel call a parent class which has KDEs or FLows
     kde_models = {}
     for smdl in tqdm(deepest_models):
         smdl_list = smdl.split('/')
         current_level = kde_models
+        #does this update kde_models????
         for part in smdl_list:
             if part not in current_level:
                 if part == smdl_list[-1]:
