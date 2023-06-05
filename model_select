@@ -66,6 +66,7 @@ def getFromDict(dataDict, mapList):
 def setInDict(dataDict, mapList, value):
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
 
+#TO CHANGE - bbh_models.get_models will return flows or KDEs
 # --- Load in models/kdemodels into dict structure: models[model][channel]
 # Construct both "underlying" KDE models (anything that has Pdet>0) and "detectable" KDE models
 # `normalize` argument normalizes KDEs on unit cube

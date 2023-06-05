@@ -86,7 +86,6 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
     for smdl in tqdm(deepest_models):
         smdl_list = smdl.split('/')
         current_level = kde_models
-        #does this update kde_models????
         for part in smdl_list:
             if part not in current_level:
                 if part == smdl_list[-1]:

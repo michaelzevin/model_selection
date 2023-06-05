@@ -108,7 +108,7 @@ class FlowModel(Model):
         #TO CHANGE - don't need KDE Bandwidth
         bandwidth = kwargs['bandwidth'] if 'bandwidth' in kwargs.keys() else _kde_bandwidth
 
-        return KDEModel(label, kde_samples, params, bandwidth, cosmo_weights, sensitivity, pdets, optimal_snrs, alpha, normalize=normalize, detectable=detectable)
+        return FlowModel(label, kde_samples, params, bandwidth, cosmo_weights, sensitivity, pdets, optimal_snrs, alpha, normalize=normalize, detectable=detectable)
 
 
     def __init__(self, label, samples, params, bandwidth=_kde_bandwidth, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None, alpha=1, normalize=False, detectable=False):
@@ -269,6 +269,29 @@ class FlowModel(Model):
         if return_dict is not None:
             return_dict[proc_idx] = likelihood
         return likelihood
+
+
+    """
+    #Sampling from 4D probability in mchirp, q, chieff, z space; given conditional. flow.get_logprob returns probability given sample
+    prob=np.zeros(1000)
+    for i, mchirp in enumerate(np.linspace(1,100,1000)):
+        sample = np.array([mchirp, q, chieff, z])
+
+        sample[0],_,_ = logisticfunc(sample[0], True, False, max_logit_mchirp, max_mchirp)
+        sample[1],_,_ = logisticfunc(sample[1], False, False, 1, max_q)
+        sample[2] = np.tanh(sample[2])
+        sample[3],_,_ = logisticfunc(sample[3], True, False, max_logit_z, max_z)
+
+        prob[i] = flow.get_logprob(sample,np.array([0.5,2]))
+
+    def get_logprob(self, sample, conditionals):
+        #make sure samples in right format
+        sample = torch.from_numpy(sample.astype(np.float32))
+        hyperparams = torch.from_numpy(conditionals.astype(np.float32))
+        hyperparams = hyperparams.reshape(-1,self.cond_inputs)
+        sample = sample.reshape(-1,4)
+        return self.flow.log_prob(sample, hyperparams)
+    """
 
     def marginalize(self, params, alpha, bandwidth=_kde_bandwidth):
         """
@@ -462,3 +485,4 @@ class FlowModel(Model):
         return obsdata
 
 
+#have the mappings of the samples I need here
