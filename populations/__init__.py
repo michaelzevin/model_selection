@@ -58,6 +58,15 @@ class KDEModel(Model):
         will include this in the construction of all your KDEs. If `sensitivity` \
         is provided, samples used to generate the detection-weighted KDE will be \
         weighted according to the key in the argument `pdet_*sensitivity*`.
+
+        Inputs:
+        label : str
+            submodel label of form CE/chi00/alpha02
+        samples : pandas Dataframe
+            binary samples from population synthesis. CURRENTLY ONE POPULATION ONLY
+            for all params
+        params : list of str
+            subset of mchirp, q, chieff, z
         """
         # check that the provdided sensitivity series is in the dataframe
         if sensitivity is not None:

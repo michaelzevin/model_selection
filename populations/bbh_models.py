@@ -58,6 +58,23 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
     provided, this function will first check if :spin_distr: is provided and
     if so, will generate spin magnitudes and calculate chieff using these
     spins and the m1/m2 specified in the dataframes.
+
+    Parameters
+    ----------
+    file_path : str
+        filepath to models_reduced.hdf5
+    channels : list of str
+        which channels to load models of, from CE, CHE, SMT, GC and NSC
+    params : list of str
+        which binary parameters to read from file, from mchirp, q, chieff, and z.
+        fed to likelihood model
+
+    Returns
+    ----------
+    deepest_models : list of str
+        list of submodels to get likelihood models from, in format 'CE/chi00/alpha02'
+    [kde_]models : dictionary? of KDEs
+        dictionary of KDE models for each submodel
     """
 
     # all models should be saved in 'file_path' in a hierarchical structure, with the channel being the top group
@@ -82,7 +99,14 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
     # Save all KDE models as pandas dataframes in dict structure
 
     # TO CHANGE -- get likelihood model. instead of KDEmodel call a parent class which has KDEs or FLows
+    # TO CHANGE -- each flow model needs all submodels at once
+        # while KDE model is instantiated for each submodel seperately
+        # read all data, pass all to likelihood model?
+        # then within this model either instantiate flows or each KDE model seperately
+
+
     kde_models = {}
+    #tqdm shows progress meter
     for smdl in tqdm(deepest_models):
         smdl_list = smdl.split('/')
         current_level = kde_models
@@ -92,6 +116,8 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
                     # if we are on the last level, read in data and store kdes
                     df = pd.read_hdf(file_path, key=smdl)
                     label = '/'.join(smdl_list)
+                    print('label')
+                    print(label)
                     mdl = KDEModel.from_samples(label, df, params, sensitivity=sensitivity, normalize=normalize, detectable=detectable)
                     current_level[part] = mdl
                 else:
