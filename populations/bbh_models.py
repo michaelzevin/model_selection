@@ -87,6 +87,7 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
     f.visititems(find_submodels)
     f.close()
     deepest_models = sorted(list(set(deepest_models)))
+    
     # if only using specific formation channels, remove other models
     if channels:
         deepest_models_cut = []

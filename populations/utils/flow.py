@@ -1,8 +1,7 @@
 """
-Storm Colloms 19/6/23
+Storm Colloms 21/6/23
 
-Defines Class to instantiate and train noramlising flow.
-As well as class to embed Gaussian network MLP maps conditionals to means and log stds.
+Defines Class to instantiate and train noramlising flow for each channel used in inference.
 """
 
 
@@ -26,8 +25,7 @@ class NFlow():
     #or neural spline flow
     #spline flow increases the flexibility in the flow model
     def __init__(self, no_trans, no_neurons, training_inputs, cond_inputs,
-                no_binaries, batch_size, training_data, training_hps, total_hps, val_data,
-                val_hps, RNVP=True, num_bins=4):
+                no_binaries, batch_size, total_hps, RNVP=True, num_bins=4):
         """
         Initialise Flow with inputed data, either RNVP or Spline flow.
 
@@ -68,12 +66,7 @@ class NFlow():
         self.no_binaries = no_binaries
         self.batch_size = batch_size
 
-        self.training_samples = training_data
-        self.training_hps = training_hps
-        self.validation_data = val_data
-
         self.total_hps = total_hps
-        self.val_hps = val_hps
 
         self.cond_inputs = cond_inputs
 
@@ -88,18 +81,14 @@ class NFlow():
                                         linear_transform = 'lu', num_bins=num_bins)
 
     #training and validation loop for the flow
-    def trainval(self, lr, epochs, batch_no, filename, schedule=False):
+    def trainval(self, lr, epochs, batch_no, filename, training_data, val_data):
+
         print('initialise flow first')
 
         #set optimiser for flow, optimises flow parameters:
         #(affine - s and t that shift and scale the transforms)
         #(spline - nodes used to model the distribution of CDFs)
         optimiser_f = torch.optim.Adam(self.network.parameters(), lr=lr, weight_decay=0)
-        
-        #scheduler changes lr with no of epochs
-        if schedule:
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser_f, 
-                            T_max=epochs, eta_min=0, last_epoch=- 1, verbose=False)
 
         n_epochs = epochs #number of iterations to train  - 1 epoch goes through through entire dataset
         n_batches = batch_no #number of batches of data in one iteration
@@ -120,14 +109,11 @@ class NFlow():
             trainlossg=0
             #set flow into training mode
             self.network.train()
-
-            if schedule:
-                self.history['lr'].append(self.scheduler.get_last_lr())
             
             #Training
             for _ in range(n_batches):
                 #split training data into - train: binary params; conditional: pop hyperparams
-                x_train, x_conditional = self.get_training_data()
+                x_train, x_conditional, xweights = self.get_training_data(training_data)
                 
 
                 #sets flow optimisers gradients to zero
@@ -142,9 +128,6 @@ class NFlow():
                 trainlossf += loss_f.item()
                 train_loss += loss_f.item()
 
-            """if schedule:
-                scheduler.step()"""
-
             #track and average losses
             train_loss /= n_batches
             trainlossf /= n_batches
@@ -156,7 +139,7 @@ class NFlow():
             # Validate
             with torch.no_grad(): #disables gradient caluclation
                 #call validation data
-                x_val, x_conditional_val = self.get_val_data()
+                x_val, x_conditional_val = self.get_val_data(val_data)
                 val_loss_g=0
 
 

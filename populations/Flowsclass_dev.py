@@ -13,6 +13,8 @@ import numpy as np
 import scipy as sp
 import pandas as pd
 from scipy.stats import norm, truncnorm
+from scipy.special import logit
+from scipy.special import expit
 from .utils.selection_effects import projection_factor_Dominik2015_interp, _PSD_defaults
 from .utils.flow import NFlow
 from .utils.transform import mchirpq_to_m1m2, mtotq_to_m1m2, mtoteta_to_m1m2, chieff_to_s1s2, mtotq_to_mc, mtoteta_to_mchirpq, eta_to_q
@@ -62,7 +64,7 @@ class FlowModel(Model):
         channel : str
             channel label of form CE
         samples : Dataframe
-            binary samples from population synthesis. CURRENTLY ONE POPULATION ONLY
+            binary samples from population synthesis.
             for all params (KDEs)
         params : list of str
             subset of mchirp, q, chieff, z
@@ -129,9 +131,11 @@ class FlowModel(Model):
         self.normalize = normalize
         self.detectable = detectable
 
-        #flow parameters
-        self.no_trans = 6
-        self.no_neurons = 128
+        #population hyperparams
+        self.chi_b = [0.,0.1,0.2,0.5]
+        self.alpha = [0.2,0.5,1.,2.,5.]
+
+        self.no_params = np.shape(params)
 
         # Save range of each parameter
         self.sample_range = {}
@@ -162,7 +166,28 @@ class FlowModel(Model):
         # By default, the detection-weighted KDE and underlying KDE (for samples that have Pdet>0)  are saved
         #TO CHANGE - don't call Bounded Nd kde, instead load flow instansiation
 
+        training_inputs = 4 
+        #always want to train with all 4 binary params?
+        #reformat this as some shape of the samples? 
+
         #map and separate data into training validation
+        if label == 'CE':
+            cond_inputs = 2
+            no_binaries = 1e6
+            batch_size = 10000
+            total_hps=20
+            training_data, training_hps, val_data, val_hps = self.map_samples(samples, cond_inputs, label)
+        else:
+            cond_inputs = 1
+            #need to remember how different number of samples was formatted in other channels
+            batch_size = 10000
+            total_hps=4
+            training_data, training_hps, val_data, val_hps = self.map_samples(samples, cond_inputs, label)
+
+        
+        #flow parameters
+        self.no_trans = 6
+        self.no_neurons = 128
 
         flow = NFlow(self.no_trans, self.no_neurons, training_inputs, cond_inputs,
                 no_binaries, batch_size, training_data, training_hps, total_hps, val_data,
@@ -170,10 +195,104 @@ class FlowModel(Model):
         
         #I Think i dont need to store the pdf as a function anywhere, why's this useful?
         #self.pdf = lambda x: flow(x.T)
-        
         self.flow = flow
 
-    #TO CHNAGE - need this? what does it do?
+    def map_samples(self, samples, cond_inputs, channel_label, params):
+        
+        channel_ids = {'CE':0, 'CHE':1,'GC':2,'NSC':3, 'SMT':4}
+        channel_id = channel_ids[channel_label]
+        #number of data points (total) for each channel
+        channel_samples = [1e6,864124,896611,582961, 4e6]
+        no_binaries = int(channel_samples[channel_id])
+
+        params = params + ['weight'] #read in weights as well
+
+        if cond_inputs == 1:
+            #Channels with 1D hyperparameters: SMT, GC, NSC, CHE
+
+            #put data from required parameters for all alphas and chi_bs into model_stack
+            models = np.zeros((no_binaries, self.no_params+1))
+            model_size = np.zeros(self.no_params)
+            cumulsize = np.zeros(self.no_params)
+
+            #stack data
+            for chib_id, xb in enumerate(self.chi_b):
+                model_size[chib_id] = np.shape(samples[(channel_id,chib_id)][params])[0]
+                cumulsize[chib_id] = np.sum(model_size)
+                models[int(cumulsize[chib_id-1]):int(np.sum(model_size))]=np.asarray(samples[(channel_id,chib_id)][params])
+
+                models_stack = np.copy(models) #np.concatenate(models, axis=0)
+
+            #logit and renormalise distributions pre-batching
+            models_stack[:,0], max_logit_mchirp, max_mchirp = self.logistic(models_stack[:,0], True)
+            if channel_id == 2: #add extra tiny amount to GC mass ratios as q=1 samples exist
+                models_stack[:,1], max_q, extra_scale = self.logistic(models_stack[:,1], True)
+            else:
+                models_stack[:,1], max_q, _ = self.logistic(models_stack[:,1])
+            models_stack[:,2] = np.arctanh(models_stack[:,2])
+            models_stack[:,3],max_logit_z, max_z = self.logistic(models_stack[:,3], True)
+
+            training_hps_stack = np.repeat(self.chi_b, (model_size).astype(int), axis=0)
+            training_hps_stack = np.reshape(training_hps_stack,(-1,1))
+            validation_hps_stack = np.reshape(training_hps_stack,(-1,1))
+            train_models_stack = models_stack
+            validation_models_stack = models_stack
+
+        else:
+            #CE channel with alpha parameter treatment
+
+            #put data from required parameters for all alphas and chi_bs into model_stack
+            models = np.zeros((4,5,no_binaries, self.no_params+1))
+            removed_model_id =[7,11]
+            val_hps = [[0.1,1],[0.2,.5]]
+
+            #format which chi_bs and alphas match which parameter values being read in
+            chi_b_alpha_pairs= np.zeros((20,2))
+            chi_b_alpha_pairs[:,0] = np.repeat(self.chi_b,np.shape(self.alpha)[0])
+            chi_b_alpha_pairs[:,1] = np.tile(self.alpha, np.shape(self.chi_b)[0])
+
+            training_hp_pairs = np.delete(chi_b_alpha_pairs, removed_model_id, 0) #removes [0.1,1] and [0.2,0.5] point
+            training_hps_stack = np.repeat(training_hp_pairs, no_binaries, axis=0) #repeats to cover all samples in each population
+            validation_hps_stack = np.repeat(val_hps, no_binaries, axis=0)
+            all_chi_b_alphas = np.repeat(chi_b_alpha_pairs, no_binaries, axis=0)
+
+            #stack data
+            for chib_id in range(4):
+                for alpha_id in range(5):
+                    models[chib_id, alpha_id]=np.asarray(samples[(chib_id, alpha_id)][params])
+
+            #removing the sepeartion of chi_b and alpha into axes and just stringing them all together instead
+            joined_chib_samples = np.concatenate(models, axis=0)
+            models_stack = np.concatenate(joined_chib_samples, axis=0) #all models if needed
+
+            #logit and renormalise distributions pre-batching
+            #chirp mass original range 0 to inf
+            joined_chib_samples[:,:,0], max_logit_mchirp, max_mchirp = logistic(joined_chib_samples[:,:,0], True)
+
+            #mass ratio - original range 0 to 1
+            joined_chib_samples[:,:,1], max_q, _ = logistic(joined_chib_samples[:,:,1])
+
+            #chieff - original range -0.5 to +1
+            joined_chib_samples[:,:,2] = np.arctanh(joined_chib_samples[:,:,2])
+
+            #redshift - original range 0 to inf
+            joined_chib_samples[:,:,3], max_logit_z, max_z = logistic(joined_chib_samples[:,:,3], True)
+
+            #keep samples seperated by model id (combined chi_b and alpha id) until validation samples are removed, then concatenate
+            train_models = np.delete(joined_chib_samples, removed_model_id, 0) #removes samples from validation models
+            train_models_stack = np.concatenate(train_models, axis=0)
+
+            validation_model = joined_chib_samples[removed_model_id,:,:]
+            validation_models_stack = np.concatenate(validation_model, axis=0)
+
+        #concatenate data plus weights with hyperparams
+        training_data = np.concatenate((train_models_stack, training_hps_stack), axis=1)
+        val_data = np.concatenate((validation_models_stack, validation_hps_stack), axis=1)
+        mappings = np.asarray([max_logit_mchirp, max_mchirp, max_q, None, max_logit_z, max_z])
+        
+        return training_data, val_data, mappings
+
+    #TO CHANGE - for fake observations. 
     def sample(self, N=1):
         """
         Samples KDE and denormalizes sampled data
@@ -186,7 +305,7 @@ class FlowModel(Model):
             samps = kde.bounded_resample(N).T
         return samps
 
-    #TO CHANGE - need to reconfigure betas since flow model is for all hyperparams
+    #for fake observations - sets beta of population. no change needed
     def rel_frac(self, beta):
         """
         Stores the relative fraction of samples that are drawn from this KDE model
@@ -205,28 +324,27 @@ class FlowModel(Model):
         """
         self.Nobs_from_beta = Nobs
 
-    def __call__(self, data, prior_pdf=None, proc_idx=None, return_dict=None):
+    def __call__(self, data, conditional_hps, prior_pdf=None, proc_idx=None, return_dict=None):
         """
-        Calculate the likelihood of the observations give a particular hypermodel (hyperlikelihood). \
+        Calculate the likelihood of the observations give a particular hypermodel (given by conditional_hps).
+        (this is the hyperlikelihood). \
         The expectation is that "data" is a [Nobs x Nsample x Nparams] array. \
         If prior_pdf is None, each observation is expected to have equal \
         posterior probability. Otherwise, the prior weights should be \
         provided as the dimemsions [samples(Nobs), samples(Nsamps)].
 
         """
-
-        #TO CHANGE - get logprob of flow object a la get_logprob
-            #need to specify conditional hyperparams in input
         
         likelihood = np.ones(data.shape[0]) * 1e-50
         prior_pdf = prior_pdf if prior_pdf is not None else np.ones((data.shape[0],data.shape[1]))
         prior_pdf[prior_pdf==0] = 1e-50
 
         for idx, (obs, p_theta) in enumerate(zip(np.atleast_3d(data),prior_pdf)):
-            # Evaluate the KDE at the samples
-
-            likelihood_per_samp = self.flow.get_logprob(obs) / p_theta
+            # Evaluate the flow probability at the samples in each observation, given the hyperparams called
+                #TO CHECK - get_logprob can handle multiple samples?
+            likelihood_per_samp = self.flow.get_logprob(obs, conditional_hps) - np.log(p_theta) #or exp the log_prob? probably better
             likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)
+        
         # store value for multiprocessing
         if return_dict is not None:
             return_dict[proc_idx] = likelihood
@@ -234,30 +352,37 @@ class FlowModel(Model):
         return likelihood
 
 
-    """
-    #Sampling from 4D probability in mchirp, q, chieff, z space; given conditional. flow.get_logprob returns probability given sample
-    prob=np.zeros(1000)
-    for i, mchirp in enumerate(np.linspace(1,100,1000)):
-        sample = np.array([mchirp, q, chieff, z])
+    def logistic(data,rescaling=False, wholedataset=True, max =1, rescale_max=1):
+        if rescaling:
+            if wholedataset:
+                rescale_max = np.max(data) + 0.01
+            else:
+                rescale_max = rescale_max
+            data /= rescale_max
+        else:
+            rescale_max = None
+        data = logit(data)
+        if wholedataset:
+            max = np.max(data)
+        else:
+            max = max
+        data /= max
+        return([data, max, rescale_max])
 
-        sample[0],_,_ = logisticfunc(sample[0], True, False, max_logit_mchirp, max_mchirp)
-        sample[1],_,_ = logisticfunc(sample[1], False, False, 1, max_q)
-        sample[2] = np.tanh(sample[2])
-        sample[3],_,_ = logisticfunc(sample[3], True, False, max_logit_z, max_z)
-
-        prob[i] = flow.get_logprob(sample,np.array([0.5,2]))
-
-    def get_logprob(self, sample, conditionals):
-        #make sure samples in right format
-        sample = torch.from_numpy(sample.astype(np.float32))
-        hyperparams = torch.from_numpy(conditionals.astype(np.float32))
-        hyperparams = hyperparams.reshape(-1,self.cond_inputs)
-        sample = sample.reshape(-1,4)
-        return self.flow.log_prob(sample, hyperparams)
-    """
+    def expistic(data, max, rescale_max=None):
+        data*=max
+        data = expit(data)
+        if rescale_max != None:
+            data *=rescale_max
+        return(data)
 
 
-    #CURRENTLY don't worry about functions below here - theyre used for plotting or made-up events
+
+
+    
+
+
+    ######CURRENTLY don't worry about functions below here - theyre used for plotting or made-up events
 
     def marginalize(self, params, alpha, bandwidth=_kde_bandwidth):
         """
