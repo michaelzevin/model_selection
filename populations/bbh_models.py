@@ -7,6 +7,7 @@ from tqdm import tqdm
 from . import *
 from .utils.transform import _DEFAULT_TRANSFORMS, _to_chieff, \
 _uniform_spinmag, _isotropic_spinmag
+from .Flowsclass_dev import FlowModel
 
 
 
@@ -45,8 +46,65 @@ def get_params(df, params):
 
     return df
 
+def get_model_keys(path):
+    alpha_val = '10'
+    all_models = []
+    models = []
+    def find_submodels(name, obj):
+        if isinstance(obj, h5py.Dataset):
+            all_models.append(name.rsplit('/', 1)[0])
+            
+    f = h5py.File(path, 'r')
+    f.visititems(find_submodels)
+    # get all unique models
+    all_models = sorted(list(set(all_models)))
+    f.close()
 
-def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, normalize=False, detectable=False, **kwargs):
+    # use only models with given alpha value
+    for model in all_models:
+        if 'alpha' in model:
+            if 'alpha'+alpha_val in model:
+                models.append('/'+model)
+        else:
+            models.append('/' + model)
+    return(np.split(np.array(models), 5))
+
+def get_model_keys_CE(path):
+    all_models = []
+    models = []
+    def find_submodels(name, obj):
+        if isinstance(obj, h5py.Dataset):
+            all_models.append(name.rsplit('/', 1)[0])
+            
+    f = h5py.File(path, 'r')
+    f.visititems(find_submodels)
+    # get all unique models
+    all_models = sorted(list(set(all_models)))
+    f.close()
+
+    # use only models with given alpha value
+    for model in all_models:
+        if 'CE' in model:
+            models.append('/'+model)
+    return(np.split(np.array(models), 4))
+
+def read_hdf5(path, channel):
+    if channel=='CE':
+        popsynth_outputs = {}
+        models = np.asarray(get_model_keys_CE(path))
+        for i in range(models.shape[0]):
+            for j in range(models.shape[1]):
+                popsynth_outputs[i,j]=pd.read_hdf(path, key=models[i,j])
+    else:
+        popsynth_outputs = {}
+        models = np.asarray(get_model_keys(path))
+        for i in range(models.shape[0]):
+            for j in range(models.shape[1]):
+                popsynth_outputs[i,j]=pd.read_hdf(path, key=models[i,j])
+    return(popsynth_outputs)
+
+
+def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, normalize=False, detectable=False, useKDE=False, **kwargs):
     """
     Call this to get all the models and submodels, as well
     as KDEs of these models, packed inside of dictionaries labelled in the
@@ -68,6 +126,8 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
     params : list of str
         which binary parameters to read from file, from mchirp, q, chieff, and z.
         fed to likelihood model
+    useKDE : bool
+        flag for whether to use KDEs or flows in inference
 
     Returns
     ----------
@@ -105,26 +165,33 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
         # read all data, pass all to likelihood model?
         # then within this model either instantiate flows or each KDE model seperately
 
+    if useKDE == True:
+        kde_models = {}
+        #tqdm shows progress meter
+        for smdl in tqdm(deepest_models):
+            smdl_list = smdl.split('/')
+            current_level = kde_models
+            for part in smdl_list:
+                if part not in current_level:
+                    if part == smdl_list[-1]:
+                        # if we are on the last level, read in data and store kdes
+                        df = pd.read_hdf(file_path, key=smdl)
+                        label = '/'.join(smdl_list)
+                        print('label')
+                        print(label)
+                        mdl = KDEModel.from_samples(label, df, params, sensitivity=sensitivity, normalize=normalize, detectable=detectable)
+                        current_level[part] = mdl
+                    else:
+                        current_level[part] = {}
 
-    kde_models = {}
-    #tqdm shows progress meter
-    for smdl in tqdm(deepest_models):
-        smdl_list = smdl.split('/')
-        current_level = kde_models
-        for part in smdl_list:
-            if part not in current_level:
-                if part == smdl_list[-1]:
-                    # if we are on the last level, read in data and store kdes
-                    df = pd.read_hdf(file_path, key=smdl)
-                    label = '/'.join(smdl_list)
-                    print('label')
-                    print(label)
-                    mdl = KDEModel.from_samples(label, df, params, sensitivity=sensitivity, normalize=normalize, detectable=detectable)
-                    current_level[part] = mdl
-                else:
-                    current_level[part] = {}
-
-            current_level = current_level[part]
-
-    return deepest_models, kde_models
+                current_level = current_level[part]
+        return deepest_models, kde_models
+    else:
+        flow_models = {}
+        
+        for chnl in tqdm(channels):
+            popsynth_outputs = read_hdf5(file_path, chnl)
+            flow_models[chnl] = FlowModel.from_samples(chnl, popsynth_outputs, params)
+        return flow_models
+            
 

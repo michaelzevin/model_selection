@@ -43,20 +43,9 @@ class NFlow():
             number of binaries in each population
         batch_size : int
             number of training + validation samples to use in each batch
-        training_data : array
-            [no_binaries x training_inputs]
-            mchirp,q,chieff,z samples
-        training_hps : array
-            [(no_binaries*number populations used for training) x cond_inputs]
-            corresponding chi_b, alpha samples to the above
         total_hps : array
             [no populations x cond_inputs]
             all chi_b alpha hyperparameters
-        val_data : array
-            [(no_binaries*number populations used for validation) x training_inputs]
-            mchirp,q,chieff,z samples for validation
-        val_hps : array
-            individual population hyperparameters used for validation
         RNVP : bool
             whether or not to use realNVP flow, if False use spline
         num_bins : int
@@ -73,12 +62,12 @@ class NFlow():
         if RNVP:
             self.network = RealNVP(n_inputs = training_inputs, n_conditional_inputs= cond_inputs,
                                     n_neurons = no_neurons, n_transforms = no_trans, n_blocks_per_transform = 2,
-                                    linear_transform = 'lu', batch_norm_between_transforms=True)
+                                    linear_transform = None, batch_norm_between_transforms=True)
         else:
             self.network = CouplingNSF(n_inputs = training_inputs, n_conditional_inputs= cond_inputs,
                                         n_neurons = no_neurons, n_transforms = no_trans,
                                         n_blocks_per_transform = 2, batch_norm_between_transforms=True,
-                                        linear_transform = 'lu', num_bins=num_bins)
+                                        linear_transform = None, num_bins=num_bins)
 
     #training and validation loop for the flow
     def trainval(self, lr, epochs, batch_no, filename, training_data, val_data):
@@ -114,7 +103,6 @@ class NFlow():
             for _ in range(n_batches):
                 #split training data into - train: binary params; conditional: pop hyperparams
                 x_train, x_conditional, xweights = self.get_training_data(training_data)
-                
 
                 #sets flow optimisers gradients to zero
                 optimiser_f.zero_grad()
@@ -139,7 +127,7 @@ class NFlow():
             # Validate
             with torch.no_grad(): #disables gradient caluclation
                 #call validation data
-                x_val, x_conditional_val = self.get_val_data(val_data)
+                x_val, x_conditional_val, x_weights_val = self.get_val_data(val_data)
                 val_loss_g=0
 
 
@@ -377,7 +365,7 @@ class NFlow():
 
         return(samples)
 
-    def get_training_data(self):
+    def get_training_data(self, training_samples):
         """
         Get random batch training data from self.training_samples
         
@@ -392,23 +380,26 @@ class NFlow():
         #differentiated by size of conditional inputs
         #2D channel has seperate populations for training and validation data, 1D mixes up samples
         if self.cond_inputs >=2:
-            random_samples = np.random.choice((self.total_hps-np.shape(self.val_hps)[0])
+            random_samples = np.random.choice((self.total_hps-2)
                     *self.no_binaries,size=(int(self.batch_size*0.8)))
-            batched_hp_pairs = self.training_hps[random_samples,:]
+            batched_hp_pairs = training_samples[random_samples,-2:]
         else:
             random_samples = np.random.choice(self.no_binaries,size=(int(self.batch_size*0.8)))
-            batched_hp_pairs = self.training_hps[random_samples]
+            batched_hp_pairs = training_samples[random_samples, -1]
 
-        batched_samples = self.training_samples[random_samples,:]
+        batched_samples = training_samples[random_samples,:(self.no_params)]
+        batch_weights = training_samples[random_samples,-3]
 
         #reshape tensors
         xdata=torch.from_numpy(batched_samples.astype(np.float32))
         #xhyperparams = np.concatenate(batched_hp_pairs)
         xhyperparams = torch.from_numpy(batched_hp_pairs.astype(np.float32))
         xhyperparams = xhyperparams.reshape(-1,self.cond_inputs)
-        return(xdata, xhyperparams)
+        xweights = torch.from_numpy(batch_weights.astype(np.float32))
 
-    def get_val_data(self):
+        return(xdata, xhyperparams,xweights)
+
+    def get_val_data(self, validation_data):
         """
         Get random batch validation data from self.validation_data
         
@@ -420,29 +411,21 @@ class NFlow():
 
         """
         if self.cond_inputs >=2:
-            random_samples = np.random.choice(np.shape(self.val_hps)[0]
-                    *self.no_binaries,size=(int(self.batch_size*0.2)))
-            val_hp_pairs = np.zeros((np.shape(self.val_hps)[0], self.no_binaries, self.cond_inputs))
-
-            #tile hp_pairs
-            i=0
-            for pair in self.val_hps:
-                validation_hp_pairs = np.tile(pair, [self.no_binaries,1])
-                val_hp_pairs[i,:,:] = validation_hp_pairs
-                i+=1
-            validation_hp_pairs = np.concatenate(val_hp_pairs)
-            validation_hp_pairs = validation_hp_pairs[random_samples, :]
-        else: 
+            random_samples = np.random.choice(2*self.no_binaries, size=(int(self.batch_size*0.2)))
+            validation_hp_pairs = validation_data[random_samples,-2:]
+        else:
             random_samples = np.random.choice(self.no_binaries,size=(int(self.batch_size*0.2)))
-            validation_hp_pairs = self.training_hps[random_samples]
+            validation_hp_pairs = validation_data[random_samples,-1]
 
-        validation_samples = self.validation_data[random_samples,:]
+        validation_samples = validation_data[random_samples,:(self.no_params)]
+        val_weights = validation_data[random_samples,-3]
 
         #reshape
         xval=torch.from_numpy(validation_samples.astype(np.float32))
         xhyperparams = torch.from_numpy(validation_hp_pairs.astype(np.float32)) 
         xhyperparams = xhyperparams.reshape(-1,self.cond_inputs)
-        return(xval, xhyperparams)
+        xweights = torch.from_numpy(val_weights.astype(np.float32)) 
+        return(xval, xhyperparams, xweights)
 
     def load_model(self,filename):
         """

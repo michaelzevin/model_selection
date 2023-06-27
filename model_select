@@ -27,6 +27,7 @@ from plot import msplot
 argp = argparse.ArgumentParser()
 argp.add_argument("--file-path", type=str, required=True, help="Path to where the population models are living. Models should be stored in hdf5 format, with the channel as the base group, and model parameters as subgroups (e.g., 'CE/chi01/alpha0.5').")
 argp.add_argument("--model0", type=str, required=True, help="Sets the 'true' model from which mock observations are drawn. When there are multiple parameters in the submodel, separate with '/' (e.g., 'chi00/alpha5'). If 'gwobs', will use the actual GW observations.")
+argp.add_argument("--use-flows", type=bool, help="True if using normalising flows to estimate hyperlikelihoods in inference. Otherwise use KDEs. Default=True")
 argp.add_argument("--gw-path", type=str, help="Sets the path for where the GW samples are living. Necessary if model0='gwobs'. Default=None.")
 argp.add_argument("--prior", type=str, help="Sets the key for the prior weights of each GW sample. This is used to calculate p(theta), which we use to divide out the prior in the heirarchical inference. Default=None.")
 argp.add_argument("--channels", nargs="+", help="Specifies the formation channels you wish to consider in the inference. If gwobs not being used, must have the same length as the number of betas provided. If 'None', will use all channels in the hdf5 file in alphabetical order. Note that the order of betas will be interpretted in the same order as channels. Default=None.")
@@ -57,6 +58,7 @@ else:
 # --- Save certain boolean arguments
 verbose=args.verbose
 make_plots=args.make_plots
+use_flows=args.use_flows
 # see if we're using GW observations
 gwobs = True if args.model0=='gwobs' else False
 
@@ -71,15 +73,19 @@ def setInDict(dataDict, mapList, value):
 # Construct both "underlying" KDE models (anything that has Pdet>0) and "detectable" KDE models
 # `normalize` argument normalizes KDEs on unit cube
 params = list(np.asarray(args.params).flatten())
-if verbose:
-    print("\nReading models, applying transformations, and initializing underlying KDEs...\n")
-model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, detectable=False)
-if verbose:
-    print("\nReading models, applying transformations, and initializing detectable KDEs...\n")
-_, kde_models_detectable = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, detectable=True)
-model_names.sort()
-hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
-Nhyper = np.max([len(x.split('/')) for x in hyperparams])
+if use_flows:
+    model_names, flow_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, use_flows=use_flows,detectable=False)
+    #TO CHANGE - add detectable models?
+else:
+    if verbose:
+        print("\nReading models, applying transformations, and initializing underlying KDEs...\n")
+    model_names, kde_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, use_flows=use_flows,detectable=False)
+    if verbose:
+        print("\nReading models, applying transformations, and initializing detectable KDEs...\n")
+    _, kde_models_detectable = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, detectable=True)
+    model_names.sort()
+    hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))
+    Nhyper = np.max([len(x.split('/')) for x in hyperparams])
 
 
 # check that betas are provided if gwobs not specified, check betas, and sort channels and betas consistently
@@ -143,6 +149,7 @@ for channel in channels:
     if not all(x == Nlevels_in_channel[0] for x in Nlevels_in_channel):
         raise ValueError("The formation channel '{0:s}' does not have the same hierarchical levels of hyperparameters across submodels: {1:s}".format(channel, ','.join(channel_smdls)))
 
+#TO CHECK - Does this check KDE models or just list of hyperparameters in channels?
 # ensure that models at each level are consistent across formation channels
 i=1 #start at 1, which will be the highest-level hyperparameter since the formation channel is the first parameter
 Nhyper_per_model = [len(x.split('/'))-1 for x in model_names]
@@ -219,6 +226,7 @@ if verbose:
     print("Generating observations...\n")
 
 # Calls gw_obs.py to generate samples if argument is passed
+#model0 denotes the model data if not using true GW data
 if gwobs:
     model0=None
     observations, obsdata, p_theta, events = gw_obs.generate_observations(params, args.gw_path, \
@@ -270,6 +278,7 @@ else:
 #plot_for_paper.plot_1D_kdemodels(model_names, kde_models_detectable, params, observations, obsdata, events, model0, name=args.name, fixed_vals=fixed_vals, plot_obs=True, plot_obs_samples=False)
 #exit()
 
+#TO CHANGE LATER - plotting
 # Plot the KDEs and observations
 if make_plots==True:
     if verbose==True:
@@ -284,23 +293,27 @@ if make_plots==True:
         print("")
 
 
-
+#TO CHANGE - only freeze if KDEs
 # --- Freeze sample evaluations in each model. 
 # This is time consuming, but only needs to be done once for each KDE model, 
 # so we don't need to recompute p_model(data) over and over again when the 
 # observation values aren't going to change. 
 # Lower the number of samples per observation to speed this up.
-if verbose:
-    print("Freezing sample evaluations in their respective models...")
-for model in model_names:
+
+if use_flows:
+    pass
+else:
     if verbose:
-        print("  {0:s}".format(model))
-    getFromDict(kde_models, model.split('/')).freeze(obsdata, data_pdf=p_theta, multiproc=args.multiproc)
-if verbose:
-    print("Done freezing KDE evaluations of observations!\n")
+        print("Freezing sample evaluations in their respective models...")
+    for model in model_names:
+        if verbose:
+            print("  {0:s}".format(model))
+        getFromDict(kde_models, model.split('/')).freeze(obsdata, data_pdf=p_theta, multiproc=args.multiproc)
+    if verbose:
+        print("Done freezing KDE evaluations of observations!\n")
 
 
-
+#TO CHANGE - flows don't have same level of hyperparameters: only do this for KDEs?
 # ---  Copy kde_models so that they all have the same levels of hyperparameters
 all_models_at_deepest = all([len(x.split('/')[1:])==Nhyper for x in model_names])
 while all_models_at_deepest==False:
@@ -328,7 +341,7 @@ while all_models_at_deepest==False:
 
 
 # --- Do the sampling!
-
+#TO CHANGE - sample with Flows instead
 sampler = sample.Sampler(model_names)
 sampler.sample(kde_models, obsdata, verbose=verbose)
 samples = sampler.samples

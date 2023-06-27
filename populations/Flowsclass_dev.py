@@ -48,6 +48,10 @@ class Model(object):
     def __call__(self, data):
         return None
 
+    #Needs functions such as:
+    #setting branching fractions/chi_b/alpha
+    #
+
 class FlowModel(Model):
     @staticmethod
     def from_samples(channel, samples, params, sensitivity=None, normalize=False, detectable=False):
@@ -62,7 +66,7 @@ class FlowModel(Model):
         Inputs
         ----------
         channel : str
-            channel label of form CE
+            channel label of form 'CE'
         samples : Dataframe
             binary samples from population synthesis.
             for all params (KDEs)
@@ -120,7 +124,7 @@ class FlowModel(Model):
         """
         
         super()
-        self.label = label
+        self.channel_label = label
         self.samples = samples
         self.params = params
         self.cosmo_weights = cosmo_weights
@@ -133,14 +137,14 @@ class FlowModel(Model):
 
         #population hyperparams
         self.chi_b = [0.,0.1,0.2,0.5]
-        self.alpha = [0.2,0.5,1.,2.,5.]
+        if label=='CE':
+            self.alpha = [0.2,0.5,1.,2.,5.]
+        else:
+            self.alpha=[1]
 
-        self.no_params = np.shape(params)
+        self.no_params = np.shape(params)[0]
+        self.conditionals = 2 if self.channel_label =='CE' else 1
 
-        # Save range of each parameter
-        self.sample_range = {}
-        for param in samples.keys():
-            self.sample_range[param] = (samples[param].min(), samples[param].max())
 
         # Combine the cosmological and detection weights
         # detectable only used for plotting
@@ -166,48 +170,63 @@ class FlowModel(Model):
         # By default, the detection-weighted KDE and underlying KDE (for samples that have Pdet>0)  are saved
         #TO CHANGE - don't call Bounded Nd kde, instead load flow instansiation
 
-        training_inputs = 4 
-        #always want to train with all 4 binary params?
-        #reformat this as some shape of the samples? 
-
-        #map and separate data into training validation
-        if label == 'CE':
-            cond_inputs = 2
-            no_binaries = 1e6
-            batch_size = 10000
-            total_hps=20
-            training_data, training_hps, val_data, val_hps = self.map_samples(samples, cond_inputs, label)
-        else:
-            cond_inputs = 1
-            #need to remember how different number of samples was formatted in other channels
-            batch_size = 10000
-            total_hps=4
-            training_data, training_hps, val_data, val_hps = self.map_samples(samples, cond_inputs, label)
-
         
         #flow parameters
         self.no_trans = 6
         self.no_neurons = 128
+        batch_size=10000
+        total_hps = np.shape(self.chi_b)[0]*np.shape(self.alpha)[0]
 
-        flow = NFlow(self.no_trans, self.no_neurons, training_inputs, cond_inputs,
-                no_binaries, batch_size, training_data, training_hps, total_hps, val_data,
-                val_hps, RNVP=True, num_bins=4)
-        
-        #I Think i dont need to store the pdf as a function anywhere, why's this useful?
-        #self.pdf = lambda x: flow(x.T)
+        channel_ids = {'CE':0, 'CHE':1,'GC':2,'NSC':3, 'SMT':4}
+        channel_id = channel_ids[self.channel_label] #will be 0, 1, 2, 3, or 4
+        #number of data points (total) for each channel
+        channel_samples = [1e6,864124,896611,582961, 4e6]
+        no_binaries = int(channel_samples[channel_id])
+
+        flow = NFlow(self.no_trans, self.no_neurons, self.no_params, self.conditionals, no_binaries, batch_size, total_hps, RNVP=False, num_bins=4)
         self.flow = flow
 
-    def map_samples(self, samples, cond_inputs, channel_label, params):
+
+    def map_samples(self, samples, params):
+        """
+        Maps samples with logistic mapping (mchirp, q, z samples) and tanh (chieff).
+        Stacks data by [mchirp,q,chieff,z,weight,chi_b,(alpha)].
+        Handles any channel.
+
+        Parameters
+        ----------
+        samples : dict
+            dictionary of data in form 
+            ['mchirp', 'q', 'chieff', 'z', 'm1' 'm2' 's1x' 's1y' 's1z' 's2x' 's2y' 's2z'
+            'weight' 'pdet_midhighlatelow_network' 'snropt_midhighlatelow_network'
+            'pdet_midhighlatelow' 'snropt_midhighlatelow']
+        channel_lable : str
+            corresponds to {'CE', 'CHE','GC','NSC', 'SMT'}
+        params : list of str
+            list of parameters to be used for inference, typically ['mchirp', 'q', 'chieff', 'z']
         
+        Returns
+        -------
+        training_data : array
+            data samples to be used for training the normalising flow.
+            [mchirp, q, chieff, z, weights, chi_b,(alpha)]
+        val_data : array
+            data samples to be used for validating the normalising flow.
+            for the non-CE channels this is the same as the training data.
+            for the CE channel this is set to 2 of the 20 sub-populations
+        mappings : array
+            constants used to map the mchirp, q, and z distributions.
+        """
         channel_ids = {'CE':0, 'CHE':1,'GC':2,'NSC':3, 'SMT':4}
-        channel_id = channel_ids[channel_label]
+        channel_id = channel_ids[self.channel_label] #will be 0, 1, 2, 3, or 4
         #number of data points (total) for each channel
+        
         channel_samples = [1e6,864124,896611,582961, 4e6]
         no_binaries = int(channel_samples[channel_id])
 
         params = params + ['weight'] #read in weights as well
 
-        if cond_inputs == 1:
+        if self.channel_label != 'CE':
             #Channels with 1D hyperparameters: SMT, GC, NSC, CHE
 
             #put data from required parameters for all alphas and chi_bs into model_stack
@@ -266,17 +285,19 @@ class FlowModel(Model):
             models_stack = np.concatenate(joined_chib_samples, axis=0) #all models if needed
 
             #logit and renormalise distributions pre-batching
+
+            #TO CHANGE - needs to account for different sets of parameters
             #chirp mass original range 0 to inf
-            joined_chib_samples[:,:,0], max_logit_mchirp, max_mchirp = logistic(joined_chib_samples[:,:,0], True)
+            joined_chib_samples[:,:,0], max_logit_mchirp, max_mchirp = self.logistic(joined_chib_samples[:,:,0], True)
 
             #mass ratio - original range 0 to 1
-            joined_chib_samples[:,:,1], max_q, _ = logistic(joined_chib_samples[:,:,1])
+            joined_chib_samples[:,:,1], max_q, _ = self.logistic(joined_chib_samples[:,:,1])
 
             #chieff - original range -0.5 to +1
             joined_chib_samples[:,:,2] = np.arctanh(joined_chib_samples[:,:,2])
 
             #redshift - original range 0 to inf
-            joined_chib_samples[:,:,3], max_logit_z, max_z = logistic(joined_chib_samples[:,:,3], True)
+            joined_chib_samples[:,:,3], max_logit_z, max_z = self.logistic(joined_chib_samples[:,:,3], True)
 
             #keep samples seperated by model id (combined chi_b and alpha id) until validation samples are removed, then concatenate
             train_models = np.delete(joined_chib_samples, removed_model_id, 0) #removes samples from validation models
@@ -290,7 +311,7 @@ class FlowModel(Model):
         val_data = np.concatenate((validation_models_stack, validation_hps_stack), axis=1)
         mappings = np.asarray([max_logit_mchirp, max_mchirp, max_q, None, max_logit_z, max_z])
         
-        return training_data, val_data, mappings
+        return(training_data, val_data, mappings)
 
     #TO CHANGE - for fake observations. 
     def sample(self, N=1):
@@ -299,30 +320,14 @@ class FlowModel(Model):
         """
         kde = self.kde
         if self.normalize==True:
-            #need samples from flow instead of kde???
+            #need samples from flow instead of kde??? at what conditionals?
             samps = denormalize_samples(kde.bounded_resample(N).T, self.param_bounds)
         else:
             samps = kde.bounded_resample(N).T
         return samps
 
-    #for fake observations - sets beta of population. no change needed
-    def rel_frac(self, beta):
-        """
-        Stores the relative fraction of samples that are drawn from this KDE model
-        """
-        self.rel_frac = beta
+    #dummy freeze class?
 
-    def rel_frac_detectable(self, beta):
-        """
-        Stores the detectable relative fraction of samples that are drawn from this KDE model
-        """
-        self.rel_frac_detectable = beta
-
-    def Nobs_from_beta(self, Nobs):
-        """
-        Stores the branching fraction of the underlying population
-        """
-        self.Nobs_from_beta = Nobs
 
     def __call__(self, data, conditional_hps, prior_pdf=None, proc_idx=None, return_dict=None):
         """
@@ -351,8 +356,7 @@ class FlowModel(Model):
         
         return likelihood
 
-
-    def logistic(data,rescaling=False, wholedataset=True, max =1, rescale_max=1):
+    def logistic(self, data,rescaling=False, wholedataset=True, max =1, rescale_max=1):
         if rescaling:
             if wholedataset:
                 rescale_max = np.max(data) + 0.01
@@ -369,25 +373,27 @@ class FlowModel(Model):
         data /= max
         return([data, max, rescale_max])
 
-    def expistic(data, max, rescale_max=None):
+    def expistic(self, data, max, rescale_max=None):
         data*=max
         data = expit(data)
         if rescale_max != None:
             data *=rescale_max
         return(data)
 
+    def train(self, lr, epochs, batch_no, filename):
+        training_data, val_data, self.mappings = self.map_samples(self.samples, self.params)
+        self.flow.trainval(lr, epochs, batch_no, filename, training_data, val_data)
 
-
-
-    
+    def load_model(self, filename):
+        self.flow.load_model(filename)
 
 
     ######CURRENTLY don't worry about functions below here - theyre used for plotting or made-up events
-
+    """
     def marginalize(self, params, alpha, bandwidth=_kde_bandwidth):
-        """
-        Generate a new, lower dimensional, KDEModel from the parameters in [params]
-        """
+
+        #Generate a new, lower dimensional, KDEModel from the parameters in [params]
+
         label = self.label
         for p in params:
             label += '_'+p
@@ -397,9 +403,9 @@ class FlowModel(Model):
 
 
     def generate_observations(self, Nobs, uncertainty, sample_from_kde=False, sensitivity='design_network', multiproc=True, verbose=False):
-        """
-        Generates samples from KDE model. This will generated Nobs samples, storing the attribute 'self.observations' with dimensions [Nobs x Nparam]. 
-        """
+
+        #Generates samples from KDE model. This will generated Nobs samples, storing the attribute 'self.observations' with dimensions [Nobs x Nparam]. 
+
         if verbose:
             print("   drawing {} observations from channel {}...".format(Nobs, self.label))
 
@@ -449,9 +455,9 @@ class FlowModel(Model):
 
 
     def measurement_uncertainty(self, Nsamps, method='delta', observation_noise=False, verbose=False):
-        """
-        Mocks up measurement uncertainty from observations using specified method
-        """
+
+        #Mocks up measurement uncertainty from observations using specified method
+
         if verbose:
             print("   mocking up observation uncertainties for the {} channel using the '{}' method...".format(self.label, method))
 
@@ -574,3 +580,4 @@ class FlowModel(Model):
                         obsdata[idx, :, pidx] = z_samps
 
         return obsdata
+    """

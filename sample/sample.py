@@ -37,12 +37,12 @@ class Sampler(object):
         channels = sorted(list(set([x.split('/')[0] for x in model_names])))
 
         # construct dict that relates submodels to their index number
-        submodels_dict = {}
-        ctr=0
+        submodels_dict = {} #dummy index dict keys:0,1,2,3, items: particular models
+        ctr=0 #associates with either chi_b or alpha (0 or 1)
         while ctr < Nhyper:
             submodels_dict[ctr] = {}
             hyper_set = sorted(list(set([x.split('/')[ctr] for x in hyperparams])))
-            for idx, model in enumerate(hyper_set):
+            for idx, model in enumerate(hyper_set): #idx associates with 0,1,2,3,(4) keys
                 submodels_dict[ctr][idx] = model
             ctr += 1
 
@@ -90,18 +90,22 @@ posteriors!".format(self.posterior_name))
         self.nsteps = kwargs['nsteps'] if 'nsteps' in kwargs else _nsteps
         self.fburnin = kwargs['fburnin'] if 'fburnin' in kwargs else _fburnin
 
-
+    #still input flow dictionary
     def sample(self, kde_models, obsdata, verbose=False):
         """
         Initialize and run the sampler
         """
+
+        #TO CHANGE - need to sample with same flow for different values of hyperparams
 
         # --- Set up initial point for the walkers
             #ndim encompasses the population hyperparameters and the branching fractions between channels
         p0 = np.empty(shape=(self.nwalkers, self.ndim))
 
         # first, for the population hyperparameters
+        #selects points in uniform prior for hyperparams chi_b and alpha
         for idx in np.arange(self.Nhyper):
+            #TO CHANGE for continuous flows- initiate in values of chi_b and alpha range
             p0[:,idx] = np.random.uniform(0, len(self.submodels_dict[idx]), size=self.nwalkers)
         # second, for the branching fractions (we have Nchannel-1 betasin the inference because of the implicit constraint that Sum(betas) = 1
         _concentration = np.ones(len(self.channels))
@@ -109,22 +113,23 @@ posteriors!".format(self.posterior_name))
         p0[:,self.Nhyper:] = beta_p0[:,:-1]
 
         # --- Do the sampling
+        #TO CHANGE for continuous flows - feed flows and prior range on chi_b and alpha for samplers
         posterior_args = [obsdata, kde_models, self.submodels_dict, self.channels, _concentration] #these are arguments to pass to self.posterior
         if verbose:
             print("Sampling...")
         sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, args=posterior_args) #calls emcee sampler with self.posterior as probability function
-        for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)): #this do anything if not verbose?
+        for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)): #running sampler
             if verbose:
-                if (idx+1) % (self.nsteps/200) == 0:
+                if (idx+1) % (self.nsteps/200) == 0:#progress bar
                     sys.stderr.write("\r  {0}% (N={1})".\
                                 format(float(idx+1)*100. / self.nsteps, idx+1))
         if verbose:
             print("\nSampling complete!\n")
 
-        # remove the burnin -- whats this?
+        # remove the burnin -- this removes some hyperpost samples at the start of the run before sampler equilibrates
         burnin_steps = int(self.nsteps * self.fburnin)
         self.Nsteps_final = self.nsteps - burnin_steps
-        samples = sampler.chain[:,burnin_steps:,:]
+        samples = sampler.chain[:,burnin_steps:,:] #chain array is number of chain, point in chain, value at that point (says in model_select?)
         lnprb = sampler.lnprobability[:,burnin_steps:]
 
         # synthesize last betas, since they sum to unity
@@ -145,7 +150,7 @@ def lnp(x, submodels_dict, _concentration):
     Returns logL of -inf for points outside, uniform within. 
     Is conditional on the sum of the betas being one.
     """
-    # first get prior on the hyperparameters, flat between the model indices
+    # first get prior on the hyperparameters, flat between the model (dummy) indices
     for hyper_idx in list(submodels_dict.keys()):
         hyperparam = x[hyper_idx]
         if ((hyperparam < 0) | (hyperparam > len(submodels_dict[hyper_idx]))):
@@ -170,7 +175,7 @@ def lnlike(x, data, kde_models, submodels_dict, channels): #data here is obsdata
     """
     model_list = []
     for hyper_idx in list(submodels_dict.keys()):
-        model_list.append(submodels_dict[hyper_idx][int(np.floor(x[hyper_idx]))])
+        model_list.append(submodels_dict[hyper_idx][int(np.floor(x[hyper_idx]))]) #finds where walker is in hyperparam space
 
     # get detectable betas
     betas_tmp = np.asarray(x[len(submodels_dict):])
@@ -185,10 +190,12 @@ def lnlike(x, data, kde_models, submodels_dict, channels): #data here is obsdata
     # Iterate over channels in this submodel, return cached values of likelihood in 4d KDE
     for channel, beta in zip(channels, betas_tmp):
         model_list_tmp = model_list.copy()
-        model_list_tmp.insert(0,channel)
+        model_list_tmp.insert(0,channel) #list with channel, 2 hypermodels (chi_b, alpha)
+        #TO CHANGE - grab correct flow channel from flow dict
         smdl = reduce(operator.getitem, model_list_tmp, kde_models) #grabs correct submodel
         # add contribution from this channel
         #I think this is what calls KDEModels __call__(data) to return likelihood.
+        #TO CHNAGE - pass conditional hyperparameters to flow __call__
         prob += beta * smdl(data)
         alpha += beta * smdl.alpha
 
@@ -199,6 +206,13 @@ def lnpost(x, data, kde_models, submodels_dict, channels, _concentration):
     """
     Combines the prior and likelihood to give a log posterior probability 
     at a given point
+
+    x : ?
+        walker points in hyperparameters space to sample probability
+    data : ?
+        GW observations
+    kde_models : Dict
+        models of KDE probabilities
     """
     # Prior
     log_prior = lnp(x, submodels_dict, _concentration)
@@ -208,7 +222,7 @@ def lnpost(x, data, kde_models, submodels_dict, channels, _concentration):
     # Likelihood
     log_like = lnlike(x, data, kde_models, submodels_dict, channels)
 
-    return log_like + log_prior #bayes thm? don't need evidence factor?
+    return log_like + log_prior #bayes thm? don't need evidence factor? - just proportionalioties - evidence is divided out
 
 
 
