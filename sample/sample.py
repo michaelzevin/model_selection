@@ -6,6 +6,8 @@ import pandas as pd
 from functools import reduce
 import operator
 import pdb
+from tqdm import tqdm
+import time
 
 import emcee
 from emcee import EnsembleSampler
@@ -18,7 +20,7 @@ _likelihood = 'emcee_lnlike'
 _posterior = 'emcee_lnpost'
 
 _nwalkers = 16
-_nsteps = 10000
+_nsteps = 100
 _fburnin = 0.2
 
 """
@@ -30,6 +32,11 @@ class Sampler(object):
     Sampler class.
     """
     def __init__(self, model_names, **kwargs):
+        """
+        model_names : list of str
+            channel, chib, alpha of each eubmodel of form
+            'CE/chi00/alpha02' or 'SMT/chi00'
+        """
 
         # Store the number of population hyperparameters and formation channels
         hyperparams = list(set([x.split('/', 1)[1] for x in model_names]))
@@ -91,12 +98,10 @@ posteriors!".format(self.posterior_name))
         self.fburnin = kwargs['fburnin'] if 'fburnin' in kwargs else _fburnin
 
     #still input flow dictionary
-    def sample(self, kde_models, obsdata, verbose=False):
+    def sample(self, pop_models, obsdata, use_flows=False, verbose=True):
         """
         Initialize and run the sampler
         """
-
-        #TO CHANGE - need to sample with same flow for different values of hyperparams
 
         # --- Set up initial point for the walkers
             #ndim encompasses the population hyperparameters and the branching fractions between channels
@@ -114,10 +119,16 @@ posteriors!".format(self.posterior_name))
 
         # --- Do the sampling
         #TO CHANGE for continuous flows - feed flows and prior range on chi_b and alpha for samplers
-        posterior_args = [obsdata, kde_models, self.submodels_dict, self.channels, _concentration] #these are arguments to pass to self.posterior
+        posterior_args = [obsdata, pop_models, self.submodels_dict, self.channels, _concentration, use_flows] #these are arguments to pass to self.posterior
         if verbose:
             print("Sampling...")
         sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, args=posterior_args) #calls emcee sampler with self.posterior as probability function
+        
+        start = time.time()
+        likelihood = lnlike([0.3,1.], obsdata, pop_models, self.submodels_dict, self.channels, use_flows)
+        end = time.time()
+        pdb.set_trace()
+        print(end-start)
         for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)): #running sampler
             if verbose:
                 if (idx+1) % (self.nsteps/200) == 0:#progress bar
@@ -168,13 +179,15 @@ def lnp(x, submodels_dict, _concentration):
     return dirichlet.logpdf(betas_tmp, _concentration)
 
 
-def lnlike(x, data, kde_models, submodels_dict, channels): #data here is obsdata previously, and x is the point in log hyperparam space
+def lnlike(x, data, pop_models, submodels_dict, channels, use_flows): #data here is obsdata previously, and x is the point in log hyperparam space
     """
     Log of the likelihood. 
     Selects on model, then tests beta.
     """
     model_list = []
+    hyperparam_idxs = []
     for hyper_idx in list(submodels_dict.keys()):
+        hyperparam_idxs.append(int(np.floor(x[hyper_idx])))
         model_list.append(submodels_dict[hyper_idx][int(np.floor(x[hyper_idx]))]) #finds where walker is in hyperparam space
 
     # get detectable betas
@@ -191,18 +204,20 @@ def lnlike(x, data, kde_models, submodels_dict, channels): #data here is obsdata
     for channel, beta in zip(channels, betas_tmp):
         model_list_tmp = model_list.copy()
         model_list_tmp.insert(0,channel) #list with channel, 2 hypermodels (chi_b, alpha)
-        #TO CHANGE - grab correct flow channel from flow dict
-        smdl = reduce(operator.getitem, model_list_tmp, kde_models) #grabs correct submodel
+        if use_flows:
+            smdl = pop_models[channel]
+            prob += beta * smdl(data, hyperparam_idxs)
+        else:
+            smdl = reduce(operator.getitem, model_list_tmp, pop_models) #grabs correct submodel
+            prob += beta * smdl(data)
+        #calls popModels __call__(data) to return likelihood.
         # add contribution from this channel
-        #I think this is what calls KDEModels __call__(data) to return likelihood.
-        #TO CHNAGE - pass conditional hyperparameters to flow __call__
-        prob += beta * smdl(data)
         alpha += beta * smdl.alpha
 
     return np.log(prob/alpha).sum()
 
 
-def lnpost(x, data, kde_models, submodels_dict, channels, _concentration):
+def lnpost(x, data, kde_models, submodels_dict, channels, _concentration, use_flows):
     """
     Combines the prior and likelihood to give a log posterior probability 
     at a given point
@@ -220,9 +235,9 @@ def lnpost(x, data, kde_models, submodels_dict, channels, _concentration):
         return log_prior
 
     # Likelihood
-    log_like = lnlike(x, data, kde_models, submodels_dict, channels)
+    log_like = lnlike(x, data, kde_models, submodels_dict, channels, use_flows)
 
-    return log_like + log_prior #bayes thm? don't need evidence factor? - just proportionalioties - evidence is divided out
+    return log_like + log_prior #evidence is divided out
 
 
 

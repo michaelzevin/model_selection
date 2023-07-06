@@ -104,7 +104,7 @@ def read_hdf5(path, channel):
     return(popsynth_outputs)
 
 
-def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, normalize=False, detectable=False, useKDE=False, **kwargs):
+def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, normalize=False, detectable=False, use_flows=True, **kwargs):
     """
     Call this to get all the models and submodels, as well
     as KDEs of these models, packed inside of dictionaries labelled in the
@@ -121,20 +121,23 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
     ----------
     file_path : str
         filepath to models_reduced.hdf5
-    channels : list of str
+    channels : list of str or None
         which channels to load models of, from CE, CHE, SMT, GC and NSC
     params : list of str
         which binary parameters to read from file, from mchirp, q, chieff, and z.
         fed to likelihood model
-    useKDE : bool
+    use_flows : bool
         flag for whether to use KDEs or flows in inference
 
     Returns
     ----------
     deepest_models : list of str
         list of submodels to get likelihood models from, in format 'CE/chi00/alpha02'
-    [kde_]models : dictionary? of KDEs
-        dictionary of KDE models for each submodel
+        kde_models : dictionary of KDEs
+            dictionary of KDE models for each submodel
+        OR
+        flow_models : dictionary of flows
+            for each formation channel
     """
 
     # all models should be saved in 'file_path' in a hierarchical structure, with the channel being the top group
@@ -157,15 +160,11 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
                     deepest_models_cut.append(mdl)
         deepest_models = deepest_models_cut
 
-    # Save all KDE models as pandas dataframes in dict structure
+    # Save all KDE/flow models as pandas dataframes in dict structure
 
-    # TO CHANGE -- get likelihood model. instead of KDEmodel call a parent class which has KDEs or FLows
-    # TO CHANGE -- each flow model needs all submodels at once
-        # while KDE model is instantiated for each submodel seperately
-        # read all data, pass all to likelihood model?
-        # then within this model either instantiate flows or each KDE model seperately
+    # TO CHANGE -- if this gets likelihood model then all the data reading in would need to be done within that class
 
-    if useKDE == True:
+    if use_flows == False:
         kde_models = {}
         #tqdm shows progress meter
         for smdl in tqdm(deepest_models):
@@ -188,10 +187,11 @@ def get_models(file_path, channels, params, spin_distr=None, sensitivity=None, n
         return deepest_models, kde_models
     else:
         flow_models = {}
-        
+        if channels == None:
+            channels = ['CE', 'CHE', 'GC', 'NSC', 'SMT']
         for chnl in tqdm(channels):
             popsynth_outputs = read_hdf5(file_path, chnl)
             flow_models[chnl] = FlowModel.from_samples(chnl, popsynth_outputs, params)
-        return flow_models
+        return deepest_models, flow_models
             
 

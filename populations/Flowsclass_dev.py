@@ -8,6 +8,7 @@ import multiprocessing
 from functools import partial
 import warnings
 import pdb
+import time
 
 import numpy as np
 import scipy as sp
@@ -77,7 +78,8 @@ class FlowModel(Model):
         if sensitivity is not None:
             if 'pdet_'+sensitivity not in samples.columns:
                 raise ValueError("{0:s} was specified for your detection weights, but cannot find this column in the samples datafarme!")
-                
+
+        #TO CHECK - will be alpha for each channel not each sub-pop?      
         # get *\alpha* for each model, defined as \int p(\theta|\lambda) Pdet(\theta) d\theta
         if sensitivity is not None:
             # if cosmological weights are provided, do mock draws from the pop
@@ -135,12 +137,13 @@ class FlowModel(Model):
         self.normalize = normalize
         self.detectable = detectable
 
+
         #population hyperparams
-        self.chi_b = [0.,0.1,0.2,0.5]
+        self.hps = [[0.,0.1,0.2,0.5]]
         if label=='CE':
-            self.alpha = [0.2,0.5,1.,2.,5.]
+            self.hps.append([0.2,0.5,1.,2.,5.])
         else:
-            self.alpha=[1]
+            self.hps.append([1])
 
         self.no_params = np.shape(params)[0]
         self.conditionals = 2 if self.channel_label =='CE' else 1
@@ -168,18 +171,17 @@ class FlowModel(Model):
         # Gets the KDE objects, specify function for pdf
         # This custom KDE handles multiple dimensions, bounds, and weights, and takes in samples (Ndim x Nsamps)
         # By default, the detection-weighted KDE and underlying KDE (for samples that have Pdet>0)  are saved
-        #TO CHANGE - don't call Bounded Nd kde, instead load flow instansiation
-
         
         #flow parameters
         self.no_trans = 6
         self.no_neurons = 128
         batch_size=10000
-        total_hps = np.shape(self.chi_b)[0]*np.shape(self.alpha)[0]
+        total_hps = np.shape(self.hps[0])[0]*np.shape(self.hps[1])[0]
 
         channel_ids = {'CE':0, 'CHE':1,'GC':2,'NSC':3, 'SMT':4}
         channel_id = channel_ids[self.channel_label] #will be 0, 1, 2, 3, or 4
         #number of data points (total) for each channel
+        #no_binaries is total number of samples across sub-populations for non-CE channels, and no samples in each sub-population for CE channel
         channel_samples = [1e6,864124,896611,582961, 4e6]
         no_binaries = int(channel_samples[channel_id])
 
@@ -187,7 +189,7 @@ class FlowModel(Model):
         self.flow = flow
 
 
-    def map_samples(self, samples, params):
+    def map_samples(self, samples, params, filepath, channel):
         """
         Maps samples with logistic mapping (mchirp, q, z samples) and tanh (chieff).
         Stacks data by [mchirp,q,chieff,z,weight,chi_b,(alpha)].
@@ -235,7 +237,7 @@ class FlowModel(Model):
             cumulsize = np.zeros(self.no_params)
 
             #stack data
-            for chib_id, xb in enumerate(self.chi_b):
+            for chib_id, xb in enumerate(self.hps[0]):
                 model_size[chib_id] = np.shape(samples[(channel_id,chib_id)][params])[0]
                 cumulsize[chib_id] = np.sum(model_size)
                 models[int(cumulsize[chib_id-1]):int(np.sum(model_size))]=np.asarray(samples[(channel_id,chib_id)][params])
@@ -251,7 +253,7 @@ class FlowModel(Model):
             models_stack[:,2] = np.arctanh(models_stack[:,2])
             models_stack[:,3],max_logit_z, max_z = self.logistic(models_stack[:,3], True)
 
-            training_hps_stack = np.repeat(self.chi_b, (model_size).astype(int), axis=0)
+            training_hps_stack = np.repeat(self.hps[0], (model_size).astype(int), axis=0)
             training_hps_stack = np.reshape(training_hps_stack,(-1,1))
             validation_hps_stack = np.reshape(training_hps_stack,(-1,1))
             train_models_stack = models_stack
@@ -267,8 +269,8 @@ class FlowModel(Model):
 
             #format which chi_bs and alphas match which parameter values being read in
             chi_b_alpha_pairs= np.zeros((20,2))
-            chi_b_alpha_pairs[:,0] = np.repeat(self.chi_b,np.shape(self.alpha)[0])
-            chi_b_alpha_pairs[:,1] = np.tile(self.alpha, np.shape(self.chi_b)[0])
+            chi_b_alpha_pairs[:,0] = np.repeat(self.hps[0],np.shape(self.hps[1])[0])
+            chi_b_alpha_pairs[:,1] = np.tile(self.hps[1], np.shape(self.hps[0])[0])
 
             training_hp_pairs = np.delete(chi_b_alpha_pairs, removed_model_id, 0) #removes [0.1,1] and [0.2,0.5] point
             training_hps_stack = np.repeat(training_hp_pairs, no_binaries, axis=0) #repeats to cover all samples in each population
@@ -310,6 +312,7 @@ class FlowModel(Model):
         training_data = np.concatenate((train_models_stack, training_hps_stack), axis=1)
         val_data = np.concatenate((validation_models_stack, validation_hps_stack), axis=1)
         mappings = np.asarray([max_logit_mchirp, max_mchirp, max_q, None, max_logit_z, max_z])
+        np.save(f'{filepath}{channel}_mappings.npy',mappings)
         
         return(training_data, val_data, mappings)
 
@@ -329,7 +332,7 @@ class FlowModel(Model):
     #dummy freeze class?
 
 
-    def __call__(self, data, conditional_hps, prior_pdf=None, proc_idx=None, return_dict=None):
+    def __call__(self, data, conditional_hp_idxs, prior_pdf=None, proc_idx=None, return_dict=None):
         """
         Calculate the likelihood of the observations give a particular hypermodel (given by conditional_hps).
         (this is the hyperlikelihood). \
@@ -344,10 +347,23 @@ class FlowModel(Model):
         prior_pdf = prior_pdf if prior_pdf is not None else np.ones((data.shape[0],data.shape[1]))
         prior_pdf[prior_pdf==0] = 1e-50
 
+        start = time.time()
+        #print(f'called flowmodel class {time.time()-start}')   
+        conditional_hps = []
+        for i in range(self.conditionals):
+            conditional_hps.append(self.hps[i][conditional_hp_idxs[i]])
+        conditional_hps = np.asarray(conditional_hps)
+
         for idx, (obs, p_theta) in enumerate(zip(np.atleast_3d(data),prior_pdf)):
             # Evaluate the flow probability at the samples in each observation, given the hyperparams called
-                #TO CHECK - get_logprob can handle multiple samples?
-            likelihood_per_samp = self.flow.get_logprob(obs, conditional_hps) - np.log(p_theta) #or exp the log_prob? probably better
+            mapped_obs = self.map_obs(obs)
+            #print(f'mapped {idx}th obs {time.time()-start}')   
+            conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[0], axis=0)
+            #print(f'tiled conditionals {time.time()-start}')   
+            likelihood_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / p_theta
+            #print(f'got log_prob {time.time()-start}')   
+            if np.any(np.isnan(likelihood_per_samp)):
+                raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
             likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)
         
         # store value for multiprocessing
@@ -355,6 +371,23 @@ class FlowModel(Model):
             return_dict[proc_idx] = likelihood
         
         return likelihood
+
+    def map_obs(self,data):
+        """
+        data should be in [mchirp,q,chieff,z] form.
+        TO CHANGE - account for different ranges of parameters.
+        mappings in form [max_logit_mchirp, max_mchirp, max_q, None, max_logit_z, max_z]
+        """
+        mapped_data = np.zeros((np.shape(data)[0],np.shape(data)[1]))
+
+        for i, sample in enumerate(data):
+            mapped_data[i,0],_,_= self.logistic(sample[0], True, False, self.mappings[0], self.mappings[1])
+            mapped_data[i,1],_,_= self.logistic(sample[1], True, False, self.mappings[2])
+            mapped_data[i,2]= np.tanh(sample[2])
+            mapped_data[i,3],_,_= self.logistic(sample[3], True, False, self.mappings[4], self.mappings[5])
+
+        return mapped_data
+
 
     def logistic(self, data,rescaling=False, wholedataset=True, max =1, rescale_max=1):
         if rescaling:
@@ -365,6 +398,8 @@ class FlowModel(Model):
             data /= rescale_max
         else:
             rescale_max = None
+        #if data <0 or data >1:
+            #raise Exception('Data out of bounds for logistic mapping')
         data = logit(data)
         if wholedataset:
             max = np.max(data)
@@ -380,12 +415,14 @@ class FlowModel(Model):
             data *=rescale_max
         return(data)
 
-    def train(self, lr, epochs, batch_no, filename):
-        training_data, val_data, self.mappings = self.map_samples(self.samples, self.params)
-        self.flow.trainval(lr, epochs, batch_no, filename, training_data, val_data)
+    def train(self, lr, epochs, batch_no, filepath, channel):
+        training_data, val_data, self.mappings = self.map_samples(self.samples, self.params, filepath, channel)
+        save_filename = f'{filepath}{channel}.pt'
+        self.flow.trainval(lr, epochs, batch_no, save_filename, training_data, val_data)
 
-    def load_model(self, filename):
-        self.flow.load_model(filename)
+    def load_model(self, filepath, channel):
+        self.flow.load_model(f'{filepath}{channel}.pt')
+        self.mappings = np.load(f'{filepath}{channel}_mappings.npy', allow_pickle=True)
 
 
     ######CURRENTLY don't worry about functions below here - theyre used for plotting or made-up events

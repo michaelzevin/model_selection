@@ -63,8 +63,7 @@ class KDEModel(Model):
         label : str
             submodel label of form CE/chi00/alpha02
         samples : pandas Dataframe
-            binary samples from population synthesis. CURRENTLY ONE POPULATION ONLY
-            for all params
+            binary samples from population synthesis.
         params : list of str
             subset of mchirp, q, chieff, z
         """

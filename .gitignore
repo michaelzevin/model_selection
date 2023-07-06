@@ -5,7 +5,7 @@
 *__pycache__
 *.swp
 *.ipynb_checkpoints
-*.hdf
+*.hdf5
 *.tar.gz
 *.pt
 *.npy

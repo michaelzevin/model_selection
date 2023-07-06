@@ -17,6 +17,8 @@ import copy
 import torch
 from  glasflow import RealNVP, CouplingNSF
 from torch import nn
+import pdb
+import time
 
 
 class NFlow():
@@ -72,7 +74,6 @@ class NFlow():
     #training and validation loop for the flow
     def trainval(self, lr, epochs, batch_no, filename, training_data, val_data):
 
-        print('initialise flow first')
 
         #set optimiser for flow, optimises flow parameters:
         #(affine - s and t that shift and scale the transforms)
@@ -380,7 +381,7 @@ class NFlow():
         #differentiated by size of conditional inputs
         #2D channel has seperate populations for training and validation data, 1D mixes up samples
         if self.cond_inputs >=2:
-            random_samples = np.random.choice((self.total_hps-2)
+            random_samples = np.random.choice((self.total_hps-self.cond_inputs)
                     *self.no_binaries,size=(int(self.batch_size*0.8)))
             batched_hp_pairs = training_samples[random_samples,-2:]
         else:
@@ -411,8 +412,8 @@ class NFlow():
 
         """
         if self.cond_inputs >=2:
-            random_samples = np.random.choice(2*self.no_binaries, size=(int(self.batch_size*0.2)))
-            validation_hp_pairs = validation_data[random_samples,-2:]
+            random_samples = np.random.choice(self.cond_inputs*self.no_binaries, size=(int(self.batch_size*0.2)))
+            validation_hp_pairs = validation_data[random_samples,-self.cond_inputs:]
         else:
             random_samples = np.random.choice(self.no_binaries,size=(int(self.batch_size*0.2)))
             validation_hp_pairs = validation_data[random_samples,-1]
@@ -439,10 +440,19 @@ class NFlow():
         get log_prob given a sample of [mchirp,q,chieff,z] given conditional hyperparameters
         """
         #make sure samples in right format
+        start= time.time()
+        #print(f'start {time.time()-start}')    
         sample = torch.from_numpy(sample.astype(np.float32))
         hyperparams = torch.from_numpy(conditionals.astype(np.float32))
         hyperparams = hyperparams.reshape(-1,self.cond_inputs)
         sample = sample.reshape(-1,4)
-        return self.network.log_prob(sample, hyperparams)
+        #print(f'reshape inputs {time.time()-start}')    
 
-    #need __call__, is this what get_log_prob is going to be?
+        print(f'start {time.time()-start}')  
+        log_prob = self.network.log_prob(sample, hyperparams)
+        print(f'calc logprob {time.time()-start}')   
+        log_prob = log_prob.detach().numpy() 
+        print(f'numpy logprob {time.time()-start}')  
+        log_prob[np.isnan(log_prob)] = 0.
+        #print(f'set nan vals to 0 {time.time()-start}')    
+        return log_prob
