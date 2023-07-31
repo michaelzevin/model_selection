@@ -15,6 +15,7 @@ import scipy as sp
 import pandas as pd
 from scipy.stats import norm, truncnorm
 from scipy.special import logit
+from scipy.special import logsumexp
 from scipy.special import expit
 from .utils.selection_effects import projection_factor_Dominik2015_interp, _PSD_defaults
 from .utils.flow import NFlow
@@ -343,28 +344,32 @@ class FlowModel(Model):
 
         """
         
-        likelihood = np.ones(data.shape[0]) * 1e-50
+        likelihood = np.ones(data.shape[0]) * -np.inf
         prior_pdf = prior_pdf if prior_pdf is not None else np.ones((data.shape[0],data.shape[1]))
         prior_pdf[prior_pdf==0] = 1e-50
 
         start = time.time()
         #print(f'called flowmodel class {time.time()-start}')   
         conditional_hps = []
+
+        #self.conditionals is number of hyperparameters, self.hps is list of hyperparameters [[chi_b],[alpha]]
         for i in range(self.conditionals):
             conditional_hps.append(self.hps[i][conditional_hp_idxs[i]])
         conditional_hps = np.asarray(conditional_hps)
 
         for idx, (obs, p_theta) in enumerate(zip(np.atleast_3d(data),prior_pdf)):
+            #iterates over events (TO CHECK)
             # Evaluate the flow probability at the samples in each observation, given the hyperparams called
             mapped_obs = self.map_obs(obs)
             #print(f'mapped {idx}th obs {time.time()-start}')   
+            #conditionals of shape Nsamples x Nhyperparameters
             conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[0], axis=0)
             #print(f'tiled conditionals {time.time()-start}')   
-            likelihood_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / p_theta
+            likelihood_per_samp = self.flow.get_logprob(mapped_obs, conditionals) - np.log(p_theta)
             #print(f'got log_prob {time.time()-start}')   
             if np.any(np.isnan(likelihood_per_samp)):
                 raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
-            likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)
+            likelihood[idx] = logsumexp([likelihood[idx], logsumexp(likelihood_per_samp) - np.log(len(obs))])
         
         # store value for multiprocessing
         if return_dict is not None:
@@ -385,6 +390,9 @@ class FlowModel(Model):
             mapped_data[i,1],_,_= self.logistic(sample[1], True, False, self.mappings[2])
             mapped_data[i,2]= np.tanh(sample[2])
             mapped_data[i,3],_,_= self.logistic(sample[3], True, False, self.mappings[4], self.mappings[5])
+
+        #mapped_data[:,0],_,_=self.logistic(data[:,0], True, False, self.mappings[0], self.mappings[1])
+        #TO CHANGE - vectorise the rest of these
 
         return mapped_data
 

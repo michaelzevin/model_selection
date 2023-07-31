@@ -8,6 +8,7 @@ import operator
 import pdb
 from tqdm import tqdm
 import time
+from scipy.special import logsumexp
 
 import emcee
 from emcee import EnsembleSampler
@@ -20,7 +21,7 @@ _likelihood = 'emcee_lnlike'
 _posterior = 'emcee_lnpost'
 
 _nwalkers = 16
-_nsteps = 100
+_nsteps = 10
 _fburnin = 0.2
 
 """
@@ -124,11 +125,11 @@ posteriors!".format(self.posterior_name))
             print("Sampling...")
         sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, args=posterior_args) #calls emcee sampler with self.posterior as probability function
         
-        start = time.time()
+        """start = time.time()
         likelihood = lnlike([0.3,1.], obsdata, pop_models, self.submodels_dict, self.channels, use_flows)
         end = time.time()
         pdb.set_trace()
-        print(end-start)
+        print(end-start)"""
         for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)): #running sampler
             if verbose:
                 if (idx+1) % (self.nsteps/200) == 0:#progress bar
@@ -195,7 +196,7 @@ def lnlike(x, data, pop_models, submodels_dict, channels, use_flows): #data here
     betas_tmp = np.append(betas_tmp, 1-np.sum(betas_tmp))
 
     # Likelihood
-    prob = np.zeros(data.shape[0])
+    lnprob = np.zeros(data.shape[0])-np.inf
 
     # Detection effiency for this hypermodel
     alpha = 0
@@ -206,15 +207,17 @@ def lnlike(x, data, pop_models, submodels_dict, channels, use_flows): #data here
         model_list_tmp.insert(0,channel) #list with channel, 2 hypermodels (chi_b, alpha)
         if use_flows:
             smdl = pop_models[channel]
-            prob += beta * smdl(data, hyperparam_idxs)
+            lnprob = logsumexp([lnprob, np.log(beta) + smdl(data, hyperparam_idxs)])
         else:
             smdl = reduce(operator.getitem, model_list_tmp, pop_models) #grabs correct submodel
-            prob += beta * smdl(data)
+        
+            lnprob += logsumexp([lnprob, np.log(beta) + np.log(smdl(data))])
         #calls popModels __call__(data) to return likelihood.
         # add contribution from this channel
         alpha += beta * smdl.alpha
 
-    return np.log(prob/alpha).sum()
+    #TO CHANGE - use log likelihood throughout
+    return logsumexp(lnprob-np.log(alpha))
 
 
 def lnpost(x, data, kde_models, submodels_dict, channels, _concentration, use_flows):

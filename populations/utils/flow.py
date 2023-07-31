@@ -448,11 +448,11 @@ class NFlow():
         sample = sample.reshape(-1,4)
         #print(f'reshape inputs {time.time()-start}')    
 
-        print(f'start {time.time()-start}')  
+        #print(f'start {time.time()-start}')  
         log_prob = self.network.log_prob(sample, hyperparams)
-        print(f'calc logprob {time.time()-start}')   
+        #print(f'calc logprob {time.time()-start}')   
         log_prob = log_prob.detach().numpy() 
-        print(f'numpy logprob {time.time()-start}')  
+        #print(f'numpy logprob {time.time()-start}')  
         log_prob[np.isnan(log_prob)] = 0.
         #print(f'set nan vals to 0 {time.time()-start}')    
         return log_prob
