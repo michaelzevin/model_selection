@@ -138,7 +138,6 @@ class FlowModel(Model):
         self.normalize = normalize
         self.detectable = detectable
 
-
         #population hyperparams
         self.hps = [[0.,0.1,0.2,0.5]]
         if label=='CE':
@@ -433,7 +432,7 @@ class FlowModel(Model):
         self.mappings = np.load(f'{filepath}{channel}_mappings.npy', allow_pickle=True)
 
 
-    ######CURRENTLY don't worry about functions below here - theyre used for plotting or made-up events
+    ######CURRENTLY don't worry about functions below here - theyre used for plotting or simulated events
     """
     def marginalize(self, params, alpha, bandwidth=_kde_bandwidth):
 
