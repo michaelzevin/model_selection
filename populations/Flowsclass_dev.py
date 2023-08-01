@@ -347,24 +347,37 @@ class FlowModel(Model):
         prior_pdf = prior_pdf if prior_pdf is not None else np.ones((data.shape[0],data.shape[1]))
         prior_pdf[prior_pdf==0] = 1e-50
 
-        start = time.time()
-        #print(f'called flowmodel class {time.time()-start}')   
         conditional_hps = []
         for i in range(self.conditionals):
             conditional_hps.append(self.hps[i][conditional_hp_idxs[i]])
         conditional_hps = np.asarray(conditional_hps)
-
+        
+        """
         for idx, (obs, p_theta) in enumerate(zip(np.atleast_3d(data),prior_pdf)):
+            obs : list
+                Nsamples x Nparams
+
             # Evaluate the flow probability at the samples in each observation, given the hyperparams called
+
             mapped_obs = self.map_obs(obs)
-            #print(f'mapped {idx}th obs {time.time()-start}')   
             conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[0], axis=0)
-            #print(f'tiled conditionals {time.time()-start}')   
             likelihood_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / p_theta
-            #print(f'got log_prob {time.time()-start}')   
             if np.any(np.isnan(likelihood_per_samp)):
                 raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
-            likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)
+            likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)"""
+
+
+        mapped_obs = self.map_obs(data)
+
+        #conditionals tiled into shape Nobs x Nsamples x Nconditionals
+        conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[1], axis=0)
+        conditionals = np.repeat([conditionals],np.shape(mapped_obs)[0], axis=0)
+
+        #calculates likelihoods for all events and all samples
+        likelihoods_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals, np.shape(data))) / prior_pdf
+
+        #adds likelihoods from samples together and then sums over events
+        likelihood = np.sum((1.0/len(data)) * np.sum(likelihoods_per_samp, axis=0))
         
         # store value for multiprocessing
         if return_dict is not None:
@@ -374,17 +387,18 @@ class FlowModel(Model):
 
     def map_obs(self,data):
         """
-        data should be in [mchirp,q,chieff,z] form.
-        TO CHANGE - account for different ranges of parameters.
+        data : array
+            Nobs x Nsamples x Nparams
+
+        TO CHANGE - account for different subsets of parameters.
         mappings in form [max_logit_mchirp, max_mchirp, max_q, None, max_logit_z, max_z]
         """
-        mapped_data = np.zeros((np.shape(data)[0],np.shape(data)[1]))
+        mapped_data = np.zeros((np.shape(data)[0],np.shape(data)[1], np.shape(data)[2]))
 
-        for i, sample in enumerate(data):
-            mapped_data[i,0],_,_= self.logistic(sample[0], True, False, self.mappings[0], self.mappings[1])
-            mapped_data[i,1],_,_= self.logistic(sample[1], True, False, self.mappings[2])
-            mapped_data[i,2]= np.tanh(sample[2])
-            mapped_data[i,3],_,_= self.logistic(sample[3], True, False, self.mappings[4], self.mappings[5])
+        mapped_data[:,:,0],_,_= self.logistic(data[:,:,0], True, False, self.mappings[0], self.mappings[1])
+        mapped_data[:,:,1],_,_= self.logistic(data[:,:,1], True, False, self.mappings[2])
+        mapped_data[:,:,2]= np.tanh(data[:,:,2])
+        mapped_data[:,:,3],_,_= self.logistic(data[:,:,3], True, False, self.mappings[4], self.mappings[5])
 
         return mapped_data
 

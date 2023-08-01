@@ -20,7 +20,7 @@ _likelihood = 'emcee_lnlike'
 _posterior = 'emcee_lnpost'
 
 _nwalkers = 16
-_nsteps = 100
+_nsteps = 10
 _fburnin = 0.2
 
 """
@@ -124,13 +124,9 @@ posteriors!".format(self.posterior_name))
             print("Sampling...")
         sampler = self.sampler(self.nwalkers, self.ndim, self.posterior, args=posterior_args) #calls emcee sampler with self.posterior as probability function
         
-        start = time.time()
-        likelihood = lnlike([0.3,1.], obsdata, pop_models, self.submodels_dict, self.channels, use_flows)
-        end = time.time()
-        pdb.set_trace()
-        print(end-start)
         for idx, result in enumerate(sampler.sample(p0, iterations=self.nsteps)): #running sampler
             if verbose:
+                print(idx)
                 if (idx+1) % (self.nsteps/200) == 0:#progress bar
                     sys.stderr.write("\r  {0}% (N={1})".\
                                 format(float(idx+1)*100. / self.nsteps, idx+1))
@@ -200,7 +196,7 @@ def lnlike(x, data, pop_models, submodels_dict, channels, use_flows): #data here
     # Detection effiency for this hypermodel
     alpha = 0
 
-    # Iterate over channels in this submodel, return cached values of likelihood in 4d KDE
+    # Iterate over channels in this submodel, return likelihood of population model
     for channel, beta in zip(channels, betas_tmp):
         model_list_tmp = model_list.copy()
         model_list_tmp.insert(0,channel) #list with channel, 2 hypermodels (chi_b, alpha)

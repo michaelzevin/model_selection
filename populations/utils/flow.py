@@ -435,24 +435,18 @@ class NFlow():
         self.network.load_state_dict(torch.load(filename))
         self.network.eval()
 
-    def get_logprob(self, sample, conditionals):
+    def get_logprob(self, sample, conditionals, obsshape):
         """
         get log_prob given a sample of [mchirp,q,chieff,z] given conditional hyperparameters
         """
         #make sure samples in right format
-        start= time.time()
-        #print(f'start {time.time()-start}')    
         sample = torch.from_numpy(sample.astype(np.float32))
         hyperparams = torch.from_numpy(conditionals.astype(np.float32))
-        hyperparams = hyperparams.reshape(-1,self.cond_inputs)
-        sample = sample.reshape(-1,4)
-        #print(f'reshape inputs {time.time()-start}')    
+        hyperparams = hyperparams.reshape(obsshape[0],obsshape[1],self.cond_inputs)
+        sample = sample.reshape(obsshape[0],obsshape[1],4)
 
-        print(f'start {time.time()-start}')  
-        log_prob = self.network.log_prob(sample, hyperparams)
-        print(f'calc logprob {time.time()-start}')   
-        log_prob = log_prob.detach().numpy() 
-        print(f'numpy logprob {time.time()-start}')  
-        log_prob[np.isnan(log_prob)] = 0.
-        #print(f'set nan vals to 0 {time.time()-start}')    
+        with torch.no_grad():
+            log_prob = self.network.log_prob(sample, hyperparams) 
+            log_prob = log_prob.cpu().numpy() 
+            log_prob[np.isnan(log_prob)] = 0.
         return log_prob
