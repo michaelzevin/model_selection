@@ -446,8 +446,8 @@ class NFlow():
         #make sure samples in right format
         start= time.time()
         #print(f'start {time.time()-start}')    
-        sample = torch.from_numpy(sample.astype(np.float32), device=self.device)
-        hyperparams = torch.from_numpy(conditionals.astype(np.float32), device=self.device)
+        sample = torch.from_numpy(sample.astype(np.float32)).to(self.device)
+        hyperparams = torch.from_numpy(conditionals.astype(np.float32)).to(self.device)
         hyperparams = hyperparams.reshape(-1,self.cond_inputs)
         sample = sample.reshape(-1,4)
         #print(f'reshape inputs {time.time()-start}')    
