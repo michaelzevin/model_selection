@@ -352,10 +352,8 @@ class FlowModel(Model):
             conditional_hps.append(self.hps[i][conditional_hp_idxs[i]])
         conditional_hps = np.asarray(conditional_hps)
         
-        """
+        
         for idx, (obs, p_theta) in enumerate(zip(np.atleast_3d(data),prior_pdf)):
-            obs : list
-                Nsamples x Nparams
 
             # Evaluate the flow probability at the samples in each observation, given the hyperparams called
 
@@ -364,20 +362,20 @@ class FlowModel(Model):
             likelihood_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / p_theta
             if np.any(np.isnan(likelihood_per_samp)):
                 raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
-            likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)"""
+            likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)
 
 
-        mapped_obs = self.map_obs(data)
+        """mapped_obs = self.map_obs(data)
 
         #conditionals tiled into shape Nobs x Nsamples x Nconditionals
         conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[1], axis=0)
         conditionals = np.repeat([conditionals],np.shape(mapped_obs)[0], axis=0)
 
         #calculates likelihoods for all events and all samples
-        likelihoods_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals, np.shape(data))) / prior_pdf
+        likelihoods_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / prior_pdf
 
         #adds likelihoods from samples together and then sums over events
-        likelihood = np.sum((1.0/len(data)) * np.sum(likelihoods_per_samp, axis=0))
+        likelihood = np.sum((1.0/len(data)) * np.sum(likelihoods_per_samp, axis=0))"""
         
         # store value for multiprocessing
         if return_dict is not None:
