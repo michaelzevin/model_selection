@@ -442,22 +442,20 @@ class NFlow():
         #make sure samples in right format
         sample = torch.from_numpy(sample.astype(np.float32))
         hyperparams = torch.from_numpy(conditionals.astype(np.float32))
-
-        """#store shape
+        #store shape
         shape = sample.shape
 
         #flatten samples given they are have dimensions Nsampels x Nobs x Nparams
         sample = torch.flatten(sample, start_dim=0, end_dim=1)
-        hyperparams = torch.flatten(hyperparams, start_dim=0, end_dim=1)"""
+        hyperparams = torch.flatten(hyperparams, start_dim=0, end_dim=1)
 
         hyperparams = hyperparams.reshape(-1,self.cond_inputs)
         sample = sample.reshape(-1,4)
 
         with torch.no_grad():
             log_prob = self.network.log_prob(sample, hyperparams)
-
             #reshape
-            #log_prob = torch.reshape(log_prob, [shape[0],shape[1]])
+            log_prob = torch.reshape(log_prob, [shape[0],shape[1]])
 
             log_prob = log_prob.cpu().numpy() 
             log_prob[np.isnan(log_prob)] = 0.
