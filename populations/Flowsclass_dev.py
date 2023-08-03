@@ -364,7 +364,7 @@ class FlowModel(Model):
                 raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
             
             #adds likelihood sum over samples /Nobs to the initial likelihood
-            likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)
+            likelihood[idx] +=  (1.0/len(obs))*np.sum(likelihood_per_samp)
 
 
         """mapped_obs = self.map_obs(data)
@@ -420,7 +420,6 @@ class FlowModel(Model):
         else:
             max = max
         d /= max
-        print(f'max data scaled {np.max(d)}')
         return([d, max, rescale_max])
 
     def expistic(self, data, max, rescale_max=None):
