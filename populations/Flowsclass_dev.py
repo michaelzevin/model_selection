@@ -354,14 +354,16 @@ class FlowModel(Model):
         
         
         for idx, (obs, p_theta) in enumerate(zip(np.atleast_3d(data),prior_pdf)):
-
             # Evaluate the flow probability at the samples in each observation, given the hyperparams called
 
             mapped_obs = self.map_obs(obs)
             conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[0], axis=0)
             likelihood_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / p_theta
+           
             if np.any(np.isnan(likelihood_per_samp)):
                 raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
+            
+            #adds likelihood sum over samples /Nobs to the initial likelihood
             likelihood[idx] += (1.0/len(obs)) * np.sum(likelihood_per_samp)
 
 
@@ -391,12 +393,12 @@ class FlowModel(Model):
         TO CHANGE - account for different subsets of parameters.
         mappings in form [max_logit_mchirp, max_mchirp, max_q, None, max_logit_z, max_z]
         """
-        mapped_data = np.zeros((np.shape(data)[0],np.shape(data)[1], np.shape(data)[2]))
+        mapped_data = np.zeros((np.shape(data)[0],np.shape(data)[1]))
 
-        mapped_data[:,:,0],_,_= self.logistic(data[:,:,0], True, False, self.mappings[0], self.mappings[1])
-        mapped_data[:,:,1],_,_= self.logistic(data[:,:,1], True, False, self.mappings[2])
-        mapped_data[:,:,2]= np.tanh(data[:,:,2])
-        mapped_data[:,:,3],_,_= self.logistic(data[:,:,3], True, False, self.mappings[4], self.mappings[5])
+        mapped_data[:,0],_,_= self.logistic(data[:,0], True, False, self.mappings[0], self.mappings[1])
+        mapped_data[:,1],_,_= self.logistic(data[:,1], True, False, self.mappings[2])
+        mapped_data[:,2]= np.tanh(data[:,2])
+        mapped_data[:,3],_,_= self.logistic(data[:,3], True, False, self.mappings[4], self.mappings[5])
 
         return mapped_data
 
@@ -407,18 +409,19 @@ class FlowModel(Model):
                 rescale_max = np.max(data) + 0.01
             else:
                 rescale_max = rescale_max
-            data /= rescale_max
+            d = data/rescale_max
         else:
             rescale_max = None
         #if data <0 or data >1:
             #raise Exception('Data out of bounds for logistic mapping')
-        data = logit(data)
+        d = logit(d)
         if wholedataset:
-            max = np.max(data)
+            max = np.max(d)
         else:
             max = max
-        data /= max
-        return([data, max, rescale_max])
+        d /= max
+        print(f'max data scaled {np.max(d)}')
+        return([d, max, rescale_max])
 
     def expistic(self, data, max, rescale_max=None):
         data*=max
