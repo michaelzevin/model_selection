@@ -353,9 +353,7 @@ class FlowModel(Model):
             conditional_hps.append(self.hps[i][conditional_hp_idxs[i]])
         conditional_hps = np.asarray(conditional_hps)
 
-        print(np.shape(data))
         mapped_obs = self.map_obs(data)
-        print(np.shape(mapped_obs))
 
         #conditionals tiled into shape Nobs x Nsamples x Nconditionals
         conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[1], axis=0)
@@ -363,7 +361,7 @@ class FlowModel(Model):
 
         #calculates likelihoods for all events and all samples
         likelihoods_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / prior_pdf
-        print(np.shape(likelihoods_per_samp))
+        print(likelihoods_per_samp[:,:])
 
         #adds likelihoods from samples together and then sums over events
         likelihood = likelihood + ((1.0/len(data)) * np.sum(likelihoods_per_samp, axis=1))
