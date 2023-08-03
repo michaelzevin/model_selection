@@ -363,8 +363,8 @@ class FlowModel(Model):
         likelihoods_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / prior_pdf
         print(likelihoods_per_samp[:,:])
 
-        #adds likelihoods from samples together and then sums over events
-        likelihood = likelihood + ((1.0/len(data)) * np.sum(likelihoods_per_samp, axis=1))
+        #adds likelihoods from samples together and then sums over events, normalise by number of samples
+        likelihood = likelihood + ((1.0/data.shape[1]) * np.sum(likelihoods_per_samp, axis=1))
         
         # store value for multiprocessing
         if return_dict is not None:
