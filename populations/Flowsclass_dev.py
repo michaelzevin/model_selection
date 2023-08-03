@@ -353,7 +353,9 @@ class FlowModel(Model):
             conditional_hps.append(self.hps[i][conditional_hp_idxs[i]])
         conditional_hps = np.asarray(conditional_hps)
 
+        print(np.shape(data))
         mapped_obs = self.map_obs(data)
+        print(np.shape(mapped_obs))
 
         #conditionals tiled into shape Nobs x Nsamples x Nconditionals
         conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[1], axis=0)
@@ -364,7 +366,7 @@ class FlowModel(Model):
         print(np.shape(likelihoods_per_samp))
 
         #adds likelihoods from samples together and then sums over events
-        likelihood = np.sum((1.0/len(data)) * np.sum(likelihoods_per_samp, axis=0))
+        likelihood = likelihood + ((1.0/len(data)) * np.sum(likelihoods_per_samp, axis=1))
         
         # store value for multiprocessing
         if return_dict is not None:
@@ -396,7 +398,7 @@ class FlowModel(Model):
                 rescale_max = np.max(data) + 0.01
             else:
                 rescale_max = rescale_max
-            data /= rescale_max
+            data = data /rescale_max
         else:
             rescale_max = None
         #if data <0 or data >1:
