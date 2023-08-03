@@ -460,5 +460,4 @@ class NFlow():
             log_prob = log_prob.cpu().numpy() 
             log_prob[np.isnan(log_prob)] = 0.
 
-
         return log_prob

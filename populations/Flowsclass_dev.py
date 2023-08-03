@@ -341,6 +341,7 @@ class FlowModel(Model):
         posterior probability. Otherwise, the prior weights should be \
         provided as the dimemsions [samples(Nobs), samples(Nsamps)].
 
+        Returns: likelihood in shape ?
         """
         
         likelihood = np.ones(data.shape[0]) * 1e-50
@@ -360,6 +361,7 @@ class FlowModel(Model):
 
         #calculates likelihoods for all events and all samples
         likelihoods_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / prior_pdf
+        print(np.shape(likelihoods_per_samp))
 
         #adds likelihoods from samples together and then sums over events
         likelihood = np.sum((1.0/len(data)) * np.sum(likelihoods_per_samp, axis=0))
