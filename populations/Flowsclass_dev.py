@@ -347,8 +347,6 @@ class FlowModel(Model):
         prior_pdf = prior_pdf if prior_pdf is not None else np.ones((data.shape[0],data.shape[1]))
         prior_pdf[prior_pdf==0] = 1e-50
 
-        start = time.time()
-        #print(f'called flowmodel class {time.time()-start}')   
         conditional_hps = []
 
         #self.conditionals is number of hyperparameters, self.hps is list of hyperparameters [[chi_b],[alpha]]
@@ -357,15 +355,12 @@ class FlowModel(Model):
         conditional_hps = np.asarray(conditional_hps)
 
         for idx, (obs, p_theta) in enumerate(zip(np.atleast_3d(data),prior_pdf)):
-            #iterates over events (TO CHECK)
+            #iterates over events
             # Evaluate the flow probability at the samples in each observation, given the hyperparams called
             mapped_obs = self.map_obs(obs)
-            #print(f'mapped {idx}th obs {time.time()-start}')   
             #conditionals of shape Nsamples x Nhyperparameters
             conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[0], axis=0)
-            #print(f'tiled conditionals {time.time()-start}')   
             likelihood_per_samp = self.flow.get_logprob(mapped_obs, conditionals) - np.log(p_theta)
-            #print(f'got log_prob {time.time()-start}')   
             if np.any(np.isnan(likelihood_per_samp)):
                 raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
             likelihood[idx] = logsumexp([likelihood[idx], logsumexp(likelihood_per_samp) - np.log(len(obs))])
@@ -390,9 +385,6 @@ class FlowModel(Model):
             mapped_data[i,2]= np.tanh(sample[2])
             mapped_data[i,3],_,_= self.logistic(sample[3], True, False, self.mappings[4], self.mappings[5])
 
-        #mapped_data[:,0],_,_=self.logistic(data[:,0], True, False, self.mappings[0], self.mappings[1])
-        #TO CHANGE - vectorise the rest of these
-
         return mapped_data
 
 
@@ -402,7 +394,7 @@ class FlowModel(Model):
                 rescale_max = np.max(data) + 0.01
             else:
                 rescale_max = rescale_max
-            data /= rescale_max
+            data = data/rescale_max
         else:
             rescale_max = None
         #if data <0 or data >1:
