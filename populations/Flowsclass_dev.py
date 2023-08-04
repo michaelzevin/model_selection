@@ -341,6 +341,7 @@ class FlowModel(Model):
         posterior probability. Otherwise, the prior weights should be \
         provided as the dimemsions [samples(Nobs), samples(Nsamps)].
 
+        Returns: likelihood in shape ?
         """
         
         likelihood = np.ones(data.shape[0]) * -np.inf
@@ -353,19 +354,20 @@ class FlowModel(Model):
         for i in range(self.conditionals):
             conditional_hps.append(self.hps[i][conditional_hp_idxs[i]])
         conditional_hps = np.asarray(conditional_hps)
-        
-        
-        for idx, (obs, p_theta) in enumerate(zip(np.atleast_3d(data),prior_pdf)):
-            #iterates over events
-            # Evaluate the flow probability at the samples in each observation, given the hyperparams called
 
-            mapped_obs = self.map_obs(obs)
-            #conditionals of shape Nsamples x Nhyperparameters
-            conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[0], axis=0)
-            likelihood_per_samp = self.flow.get_logprob(mapped_obs, conditionals) - np.log(p_theta)
-            if np.any(np.isnan(likelihood_per_samp)):
-                raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
-            likelihood[idx] = logsumexp([likelihood[idx], logsumexp(likelihood_per_samp) - np.log(len(obs))])
+        mapped_obs = self.map_obs(data)
+
+        #conditionals tiled into shape Nobs x Nsamples x Nconditionals
+        conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[1], axis=0)
+        conditionals = np.repeat([conditionals],np.shape(mapped_obs)[0], axis=0)
+
+        #calculates likelihoods for all events and all samples
+        likelihoods_per_samp = self.flow.get_logprob(mapped_obs, conditionals) -np.log(prior_pdf)
+        if np.any(np.isnan(likelihood_per_samp)):
+            raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
+
+        #adds likelihoods from samples together and then sums over events, normalise by number of samples
+        likelihood = logsumexp(likelihood, logsumexp(likelihoods_per_samp, axis=1) - np.log(data.shape[1]))
         
         # store value for multiprocessing
         if return_dict is not None:
