@@ -27,7 +27,7 @@ class NFlow():
     #or neural spline flow
     #spline flow increases the flexibility in the flow model
     def __init__(self, no_trans, no_neurons, training_inputs, cond_inputs,
-                no_binaries, batch_size, total_hps, RNVP=True, num_bins=4):
+                no_binaries, batch_size, total_hps, RNVP=True, num_bins=4, device="cpu"):
         """
         Initialise Flow with inputed data, either RNVP or Spline flow.
 
@@ -61,6 +61,8 @@ class NFlow():
 
         self.cond_inputs = cond_inputs
 
+        self.device = device # cuda:X where X is the slot of the GPU. run nvidia-smi in the terminal to see gpus
+
         if RNVP:
             self.network = RealNVP(n_inputs = training_inputs, n_conditional_inputs= cond_inputs,
                                     n_neurons = no_neurons, n_transforms = no_trans, n_blocks_per_transform = 2,
@@ -70,6 +72,8 @@ class NFlow():
                                         n_neurons = no_neurons, n_transforms = no_trans,
                                         n_blocks_per_transform = 2, batch_norm_between_transforms=True,
                                         linear_transform = None, num_bins=num_bins)
+
+        self.network.to(device)
 
     #training and validation loop for the flow
     def trainval(self, lr, epochs, batch_no, filename, training_data, val_data):
@@ -439,17 +443,9 @@ class NFlow():
         """
         get log_prob given a sample of [mchirp,q,chieff,z] given conditional hyperparameters
         """
-        #make sure samples in right format
-        sample = torch.from_numpy(sample.astype(np.float32))
-        hyperparams = torch.from_numpy(conditionals.astype(np.float32))
-
-        """#store shape
-        shape = sample.shape
-
-        #flatten samples given they are have dimensions Nsampels x Nobs x Nparams
-        sample = torch.flatten(sample, start_dim=0, end_dim=1)
-        hyperparams = torch.flatten(hyperparams, start_dim=0, end_dim=1)"""
-
+        #make sure samples in right format  
+        sample = torch.from_numpy(sample.astype(np.float32)).to(self.device)
+        hyperparams = torch.from_numpy(conditionals.astype(np.float32)).to(self.device)
         hyperparams = hyperparams.reshape(-1,self.cond_inputs)
         sample = sample.reshape(-1,4)
 

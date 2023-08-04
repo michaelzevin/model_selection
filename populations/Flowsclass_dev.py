@@ -15,6 +15,7 @@ import scipy as sp
 import pandas as pd
 from scipy.stats import norm, truncnorm
 from scipy.special import logit
+from scipy.special import logsumexp
 from scipy.special import expit
 from .utils.selection_effects import projection_factor_Dominik2015_interp, _PSD_defaults
 from .utils.flow import NFlow
@@ -136,7 +137,6 @@ class FlowModel(Model):
         self.alpha = alpha
         self.normalize = normalize
         self.detectable = detectable
-
 
         #population hyperparams
         self.hps = [[0.,0.1,0.2,0.5]]
@@ -343,41 +343,29 @@ class FlowModel(Model):
 
         """
         
-        likelihood = np.ones(data.shape[0]) * 1e-50
+        likelihood = np.ones(data.shape[0]) * -np.inf
         prior_pdf = prior_pdf if prior_pdf is not None else np.ones((data.shape[0],data.shape[1]))
         prior_pdf[prior_pdf==0] = 1e-50
 
         conditional_hps = []
+
+        #self.conditionals is number of hyperparameters, self.hps is list of hyperparameters [[chi_b],[alpha]]
         for i in range(self.conditionals):
             conditional_hps.append(self.hps[i][conditional_hp_idxs[i]])
         conditional_hps = np.asarray(conditional_hps)
         
         
         for idx, (obs, p_theta) in enumerate(zip(np.atleast_3d(data),prior_pdf)):
+            #iterates over events
             # Evaluate the flow probability at the samples in each observation, given the hyperparams called
 
             mapped_obs = self.map_obs(obs)
+            #conditionals of shape Nsamples x Nhyperparameters
             conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[0], axis=0)
-            likelihood_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / p_theta
-           
+            likelihood_per_samp = self.flow.get_logprob(mapped_obs, conditionals) - np.log(p_theta)
             if np.any(np.isnan(likelihood_per_samp)):
                 raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
-            
-            #adds likelihood sum over samples /Nobs to the initial likelihood
-            likelihood[idx] +=  (1.0/len(obs))*np.sum(likelihood_per_samp)
-
-
-        """mapped_obs = self.map_obs(data)
-
-        #conditionals tiled into shape Nobs x Nsamples x Nconditionals
-        conditionals = np.repeat([conditional_hps],np.shape(mapped_obs)[1], axis=0)
-        conditionals = np.repeat([conditionals],np.shape(mapped_obs)[0], axis=0)
-
-        #calculates likelihoods for all events and all samples
-        likelihoods_per_samp = np.exp(self.flow.get_logprob(mapped_obs, conditionals)) / prior_pdf
-
-        #adds likelihoods from samples together and then sums over events
-        likelihood = np.sum((1.0/len(data)) * np.sum(likelihoods_per_samp, axis=0))"""
+            likelihood[idx] = logsumexp([likelihood[idx], logsumexp(likelihood_per_samp) - np.log(len(obs))])
         
         # store value for multiprocessing
         if return_dict is not None:
@@ -439,7 +427,7 @@ class FlowModel(Model):
         self.mappings = np.load(f'{filepath}{channel}_mappings.npy', allow_pickle=True)
 
 
-    ######CURRENTLY don't worry about functions below here - theyre used for plotting or made-up events
+    ######CURRENTLY don't worry about functions below here - theyre used for plotting or simulated events
     """
     def marginalize(self, params, alpha, bandwidth=_kde_bandwidth):
 

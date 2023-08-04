@@ -8,6 +8,7 @@ import operator
 import pdb
 from tqdm import tqdm
 import time
+from scipy.special import logsumexp
 
 import emcee
 from emcee import EnsembleSampler
@@ -191,7 +192,7 @@ def lnlike(x, data, pop_models, submodels_dict, channels, use_flows): #data here
     betas_tmp = np.append(betas_tmp, 1-np.sum(betas_tmp))
 
     # Likelihood
-    prob = np.zeros(data.shape[0])
+    lnprob = np.zeros(data.shape[0])-np.inf
 
     # Detection effiency for this hypermodel
     alpha = 0
@@ -202,15 +203,17 @@ def lnlike(x, data, pop_models, submodels_dict, channels, use_flows): #data here
         model_list_tmp.insert(0,channel) #list with channel, 2 hypermodels (chi_b, alpha)
         if use_flows:
             smdl = pop_models[channel]
-            prob += beta * smdl(data, hyperparam_idxs)
+            lnprob = logsumexp([lnprob, np.log(beta) + smdl(data, hyperparam_idxs)])
         else:
             smdl = reduce(operator.getitem, model_list_tmp, pop_models) #grabs correct submodel
-            prob += beta * smdl(data)
+        
+            lnprob += logsumexp([lnprob, np.log(beta) + np.log(smdl(data))])
         #calls popModels __call__(data) to return likelihood.
         # add contribution from this channel
         alpha += beta * smdl.alpha
 
-    return np.log(prob/alpha).sum()
+    #TO CHANGE - use log likelihood throughout
+    return logsumexp(lnprob-np.log(alpha))
 
 
 def lnpost(x, data, kde_models, submodels_dict, channels, _concentration, use_flows):
