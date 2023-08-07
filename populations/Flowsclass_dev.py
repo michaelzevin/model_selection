@@ -56,7 +56,7 @@ class Model(object):
 
 class FlowModel(Model):
     @staticmethod
-    def from_samples(channel, samples, params, sensitivity=None, normalize=False, detectable=False):
+    def from_samples(channel, samples, params, sensitivity=None, normalize=False, detectable=False, device='cpu'):
         """
         Generate a Flow model instance from `samples`, where `params` are series in the `samples` dataframe. 
         
@@ -111,7 +111,7 @@ class FlowModel(Model):
             optimal_snrs = np.nan*np.ones(len(samples))
 
         return FlowModel(channel, samples, params, cosmo_weights, sensitivity, pdets, optimal_snrs, alpha,
-                         normalize=normalize, detectable=detectable)
+                         normalize=normalize, detectable=detectable, device=device)
 
 
     def __init__(self, label, samples, params, cosmo_weights=None, sensitivity=None, pdets=None, optimal_snrs=None,
@@ -363,11 +363,13 @@ class FlowModel(Model):
 
         #calculates likelihoods for all events and all samples
         likelihoods_per_samp = self.flow.get_logprob(mapped_obs, conditionals) -np.log(prior_pdf)
-        if np.any(np.isnan(likelihood_per_samp)):
+        if np.any(np.isnan(likelihoods_per_samp)):
             raise Exception('Obs data is outside of range of samples for channel - cannot logistic map.')
 
         #adds likelihoods from samples together and then sums over events, normalise by number of samples
-        likelihood = logsumexp(likelihood, logsumexp(likelihoods_per_samp, axis=1) - np.log(data.shape[1]))
+        print(np.shape(likelihoods_per_samp))
+        print(logsumexp(likelihoods_per_samp, axis=1) - np.log(data.shape[1]))
+        likelihood = logsumexp([likelihood, logsumexp(likelihoods_per_samp, axis=1) - np.log(data.shape[1])], axis=0)
         
         # store value for multiprocessing
         if return_dict is not None:
@@ -383,12 +385,12 @@ class FlowModel(Model):
         TO CHANGE - account for different subsets of parameters.
         mappings in form [max_logit_mchirp, max_mchirp, max_q, None, max_logit_z, max_z]
         """
-        mapped_data = np.zeros((np.shape(data)[0],np.shape(data)[1]))
+        mapped_data = np.zeros((np.shape(data)[0],np.shape(data)[1],np.shape(data)[2]))
 
-        mapped_data[:,0],_,_= self.logistic(data[:,0], True, False, self.mappings[0], self.mappings[1])
-        mapped_data[:,1],_,_= self.logistic(data[:,1], True, False, self.mappings[2])
-        mapped_data[:,2]= np.tanh(data[:,2])
-        mapped_data[:,3],_,_= self.logistic(data[:,3], True, False, self.mappings[4], self.mappings[5])
+        mapped_data[:,:,0],_,_= self.logistic(data[:,:,0], True, False, self.mappings[0], self.mappings[1])
+        mapped_data[:,:,1],_,_= self.logistic(data[:,:,1], True, False, self.mappings[2])
+        mapped_data[:,:,2]= np.tanh(data[:,:,2])
+        mapped_data[:,:,3],_,_= self.logistic(data[:,:,3], True, False, self.mappings[4], self.mappings[5])
 
         return mapped_data
 

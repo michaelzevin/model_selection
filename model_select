@@ -59,6 +59,8 @@ argp.add_argument("--train-flows", type=bool, default=False, help="If true train
 argp.add_argument("--lr", type=float, default='0.001', help="Learning rate to train flow models. Default=0.001.")
 argp.add_argument("--epochs", type=int, default='300', help="Epochs to train flow models. Default=300.")
 argp.add_argument("--batch-no", type=int, default='10', help="Number of batches to train flow models. Default=10.")
+argp.add_argument("--device", type=str, default='cpu', help="Device to run model select on. Default=cpu, otherwise choose cuda:X where X is the slot of the GPU.")
+
 
 args = argp.parse_args()
 
@@ -86,7 +88,7 @@ def setInDict(dataDict, mapList, value):
 # `normalize` argument normalizes KDEs on unit cube
 params = list(np.asarray(args.params).flatten())
 if use_flows:
-    model_names, pop_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, use_flows=use_flows,detectable=False)
+    model_names, pop_models = bbh_models.get_models(args.file_path, args.channels, args.params, spin_distr=args.spinmag, sensitivity=args.sensitivity, normalize=args.normalize_kde, use_flows=use_flows,detectable=False, device=args.device)
     #TO CHANGE - add detectable models?
     model_names.sort()
     hyperparams = sorted(list(set([x.split('/', 1)[1] for x in model_names])))

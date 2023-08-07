@@ -198,6 +198,7 @@ def lnlike(x, data, pop_models, submodels_dict, channels, use_flows): #data here
     alpha = 0
 
     # Iterate over channels in this submodel, return likelihood of population model
+    #TO VECTORISE -
     for channel, beta in zip(channels, betas_tmp):
         model_list_tmp = model_list.copy()
         model_list_tmp.insert(0,channel) #list with channel, 2 hypermodels (chi_b, alpha)
